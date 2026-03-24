@@ -1,53 +1,78 @@
-import redis
-import json
-from typing import Callable, List, Dict
+import logging
+from typing import List, Tuple
+from redis.asyncio import Redis, ConnectionPool
+from redis.exceptions import ResponseError
 from core.schemas.events import BaseEvent
 
-class RedisEventBus:
-    def __init__(self, host: str = 'localhost', port: int = 6379):
-        self.redis_client = redis.Redis(host=host, port=port, decode_responses=True)
+logger = logging.getLogger(__name__)
 
-    def publish(self, stream_name: str, event: BaseEvent) -> str:
-        """
-        Publica um evento em um Redis Stream.
-        """
-        event_dict = {"data": event.model_dump_json()}
-        # MAXLEN limita o tamanho do stream para evitar OOM (Out of Memory)
-        message_id = self.redis_client.xadd(stream_name, event_dict, maxlen=100000)
+class AsyncRedisEventBus:
+    def __init__(self, redis_url: str = "redis://localhost:6379/0"):
+        self.pool = ConnectionPool.from_url(redis_url, decode_responses=True)
+        self.client = Redis(connection_pool=self.pool)
+
+    async def publish(self, stream_name: str, event: BaseEvent, maxlen: int = 100000) -> str:
+        """Publica evento de forma assíncrona com limite de tamanho de stream."""
+        event_data = {"payload": event.model_dump_json()}
+        message_id = await self.client.xadd(
+            name=stream_name,
+            fields=event_data,
+            maxlen=maxlen,
+            approximate=True
+        )
         return message_id
 
-    def setup_consumer_group(self, stream_name: str, group_name: str):
-        """
-        Cria um Consumer Group. Ignora se já existir.
-        """
+    async def setup_consumer_group(self, stream_name: str, group_name: str) -> None:
+        """Garante a existência do stream e do Consumer Group."""
         try:
-            # ID '0-0' cria o grupo a partir do início, '$' a partir dos novos.
-            self.redis_client.xgroup_create(stream_name, group_name, id='0-0', mkstream=True)
-        except redis.exceptions.ResponseError as e:
+            await self.client.xgroup_create(name=stream_name, groupname=group_name, id='0-0', mkstream=True)
+        except ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
 
-    def consume(self, stream_name: str, group_name: str, consumer_name: str, batch_size: int = 10) -> List[Dict]:
-        """
-        Lê mensagens do stream para este consumer group.
-        """
-        # '>' significa ler mensagens que nunca foram entregues a outros consumidores neste grupo
-        streams = {stream_name: '>'}
-        messages = self.redis_client.xreadgroup(group_name, consumer_name, streams, count=batch_size, block=2000)
-        
+    async def consume(self, stream_name: str, group_name: str, consumer_name: str, batch_size: int = 10, block_ms: int = 2000) -> List[Tuple[str, BaseEvent]]:
+        """Lê novas mensagens destinadas a este consumidor."""
+        try:
+            streams = {stream_name: '>'}
+            messages = await self.client.xreadgroup(
+                groupname=group_name, consumername=consumer_name, streams=streams, count=batch_size, block=block_ms
+            )
+            return self._parse_messages(messages)
+        except Exception as e:
+            logger.error(f"Erro na leitura do stream {stream_name}: {e}")
+            return []
+
+    async def acknowledge(self, stream_name: str, group_name: str, message_id: str) -> None:
+        """Confirma o processamento, removendo a mensagem da PEL."""
+        await self.client.xack(stream_name, group_name, message_id)
+
+    async def reclaim_pending_messages(self, stream_name: str, group_name: str, consumer_name: str, min_idle_time_ms: int = 60000, batch_size: int = 10) -> List[Tuple[str, BaseEvent]]:
+        """Recupera mensagens pendentes de workers mortos via XAUTOCLAIM."""
+        try:
+            claim_result = await self.client.xautoclaim(
+                name=stream_name, groupname=group_name, consumername=consumer_name, min_idle_time=min_idle_time_ms, start_id='0-0', count=batch_size
+            )
+            claimed_messages = claim_result[1] 
+            if claimed_messages:
+                return self._parse_messages([[stream_name, claimed_messages]])
+            return []
+        except Exception as e:
+            logger.error(f"Erro ao reivindicar mensagens pendentes no stream {stream_name}: {e}")
+            return []
+
+    def _parse_messages(self, raw_messages: list) -> List[Tuple[str, BaseEvent]]:
         parsed_events = []
-        if messages:
-            for stream, msgs in messages:
-                for message_id, msg_data in msgs:
-                    event_json = msg_data.get('data')
-                    parsed_events.append({
-                        "id": message_id,
-                        "event": BaseEvent.model_validate_json(event_json)
-                    })
+        if not raw_messages:
+            return parsed_events
+        for stream, msgs in raw_messages:
+            for message_id, msg_data in msgs:
+                try:
+                    raw_json = msg_data.get('payload')
+                    event = BaseEvent.model_validate_json(raw_json)
+                    parsed_events.append((message_id, event))
+                except Exception as e:
+                    logger.critical(f"Falha fatal de serialização na mensagem {message_id}: {e}")
         return parsed_events
 
-    def acknowledge(self, stream_name: str, group_name: str, message_id: str):
-        """
-        Confirma que a mensagem foi processada com sucesso.
-        """
-        self.redis_client.xack(stream_name, group_name, message_id)
+    async def close(self):
+        await self.pool.disconnect()

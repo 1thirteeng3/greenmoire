@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   postgres:
-    image: ankane/pgvector:v0.5.1 # Postgres 15/16 com pgvector pré-compilado
+    # Fixação estrita no Postgres 16 com pgvector oficial
+    image: pgvector/pgvector:pg16
     container_name: grimoire_db
     environment:
       POSTGRES_USER: grimoire_admin
@@ -21,7 +22,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: grimoire_event_bus
-    command: ["redis-server", "--appendonly", "yes"] # Persistência AOF ativada para não perder eventos
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
     volumes:
@@ -32,26 +33,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # Provedor de Embeddings Locais (Substituindo a função do LocalAI)
-  # Expõe uma API compatível com OpenAI em http://localhost:7997/v1/embeddings
-  local_embedding_api:
-    image: michaelf34/infinity:latest
-    container_name: grimoire_embeddings
+  # Restauração do LocalAI conforme escopo original da Fase 1
+  localai:
+    image: quay.io/go-skynet/local-ai:latest
+    container_name: grimoire_localai
     ports:
-      - "7997:7997"
+      - "8080:8080"
     environment:
-      - MODEL_ID=BAAI/bge-large-en-v1.5 # Substituível por modelos multilingues se necessário
+      - MODELS_PATH=/models
+      # Preload do modelo de embeddings bge-large na inicialização
+      - PRELOAD_MODELS=[{"url": "github:go-skynet/model-gallery/base.yaml", "name": "bge-large"}]
     volumes:
-      - model_cache:/app/.cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia # Requer nvidia-container-toolkit se usar GPU, remover se for apenas CPU
-              count: 1
-              capabilities: [gpu]
+      - localai_models:/models
 
 volumes:
   pgdata:
   redisdata:
-  model_cache:
+  localai_models:
