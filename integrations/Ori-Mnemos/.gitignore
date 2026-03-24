@@ -1,0 +1,64 @@
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+coverage/
+
+# Local Claude settings
+.claude/settings.local.json
+# Symlinks only — real hooks live in adapters/claude-code/hooks/
+.claude/hooks/
+
+# Session-specific memory (not for repo)
+memory/sessions/
+
+# Transcript raw files (large, not needed in repo)
+research/transcripts/
+
+# Local cache and personal scratch
+.npm-cache/
+memory/personal/
+
+# Private strategy/research content
+brain/
+memory/
+research/
+CLAUDE.md
+PLAN.md
+ROADMAP.md
+tests/*
+!tests/bridge.test.ts
+!tests/cli/
+tests/cli/*
+!tests/cli/archive.test.ts
+!tests/cli/prune.test.ts
+!tests/core/
+tests/core/*
+!tests/core/config.test.ts
+!tests/core/engine.test.ts
+!tests/core/fusion.test.ts
+!tests/core/graph.test.ts
+!tests/core/warmth-audit.test.ts
+!tests/core/warmth.test.ts
+!tests/core/qvalue.test.ts
+!tests/core/reward.test.ts
+!tests/core/rerank.test.ts
+!tests/core/cooccurrence.test.ts
+!tests/core/ppr.test.ts
+!tests/core/stage-learner.test.ts
+!tests/core/dampening.test.ts
+!tests/core/classify.test.ts
+!tests/mcp/
+tests/mcp/*
+!tests/mcp/server.test.ts
+.npmrc
+
+# Registry tokens (sensitive)
+.mcpregistry_github_token
+.mcpregistry_registry_token
+mcp-publisher.exe
+
+# Benchmark data (large datasets)
+bench/data/
+# Benchmark results (local runs)
+bench/results/
