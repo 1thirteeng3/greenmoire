@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:v0.5.1 # Postgres 15/16 com pgvector pré-compilado
+    container_name: grimoire_db
+    environment:
+      POSTGRES_USER: grimoire_admin
+      POSTGRES_PASSWORD: grimoire_secure_password
+      POSTGRES_DB: grimoire_core
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grimoire_admin -d grimoire_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: grimoire_event_bus
+    command: ["redis-server", "--appendonly", "yes"] # Persistência AOF ativada para não perder eventos
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Provedor de Embeddings Locais (Substituindo a função do LocalAI)
+  # Expõe uma API compatível com OpenAI em http://localhost:7997/v1/embeddings
+  local_embedding_api:
+    image: michaelf34/infinity:latest
+    container_name: grimoire_embeddings
+    ports:
+      - "7997:7997"
+    environment:
+      - MODEL_ID=BAAI/bge-large-en-v1.5 # Substituível por modelos multilingues se necessário
+    volumes:
+      - model_cache:/app/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia # Requer nvidia-container-toolkit se usar GPU, remover se for apenas CPU
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  redisdata:
+  model_cache:
