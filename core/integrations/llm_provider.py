@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
@@ -32,18 +32,33 @@ class LLMProvider:
         self,
         provider: str,
         model: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: float = 0.2,
         max_tokens: int = 1500,
-    ) -> str:
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Union[str, Dict[str, Any]]:
         """Roteia a chamada para o SDK correto baseando-se no provedor solicitado."""
         provider = provider.lower()
 
         try:
             if provider == "openai":
-                return await self._call_openai(self.openai_client, model, messages, temperature, max_tokens)
+                return await self._call_openai(
+                    self.openai_client,
+                    model,
+                    messages,
+                    temperature,
+                    max_tokens,
+                    tools=tools,
+                )
             if provider == "localai":
-                return await self._call_openai(self.localai_client, model, messages, temperature, max_tokens)
+                return await self._call_openai(
+                    self.localai_client,
+                    model,
+                    messages,
+                    temperature,
+                    max_tokens,
+                    tools=tools,
+                )
             if provider == "anthropic":
                 if not self.anthropic_client:
                     raise ValueError("Anthropic API Key nao configurada.")
@@ -61,15 +76,36 @@ class LLMProvider:
         messages: List[Dict[str, Any]],
         temperature: float,
         max_tokens: int,
-    ) -> str:
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Union[str, Dict[str, Any]]:
         """Chamada padrao compativel com OpenAI e LocalAI."""
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return (response.choices[0].message.content or "").strip()
+        request_payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools:
+            request_payload["tools"] = tools
+
+        response = await client.chat.completions.create(**request_payload)
+        message = response.choices[0].message
+
+        if getattr(message, "tool_calls", None):
+            tool_calls = [
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+            return {"content": message.content, "tool_calls": tool_calls}
+
+        return (message.content or "").strip()
 
     async def _call_anthropic(
         self,

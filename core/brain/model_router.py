@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from core.integrations.llm_provider import LLMProvider
 
@@ -59,4 +59,26 @@ class ModelRouter:
             model=model,
             messages=messages,
             temperature=temperature,
+        )
+
+    async def execute_tier_with_tools(
+        self,
+        tier: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.2,
+    ) -> Any:
+        """
+        Executa inferência com catálogo de ferramentas habilitado.
+        Retorna texto final ou payload estruturado com tool_calls.
+        """
+        provider, model = self.get_route_for_tier(tier)
+        logger.debug(f"Executando Tarefa {tier} com tools via {provider.upper()} ({model})")
+
+        return await self.provider.generate_completion(
+            provider=provider,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            tools=tools,
         )
