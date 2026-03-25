@@ -1,5 +1,4 @@
 import logging
-from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Infraestrutura e Integrações
@@ -43,14 +42,8 @@ class ApplicationContainer:
         self.tier_engine = TierEngine()
         self.model_router = ModelRouter(self.llm_provider, self.tier_engine)
         self.context_builder = ContextBuilder()
-        # O ConflictResolver atual exige um client OpenAI-like no construtor.
-        self.conflict_resolver = ConflictResolver(
-            self.embedding_provider,
-            AsyncOpenAI(
-                base_url=self.embedding_provider.base_url,
-                api_key=self.embedding_provider.api_key,
-            ),
-        )
+        # ConflictResolver agora é agnóstico e usa o ModelRouter.
+        self.conflict_resolver = ConflictResolver(self.embedding_provider, self.model_router)
 
         # Nivel 2: Ferramentas e Agentes
         self.tool_registry = ToolRegistry(self.firecrawl_provider)

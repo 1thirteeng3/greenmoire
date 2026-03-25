@@ -73,3 +73,20 @@ class MemoryRepository:
 
         result = await self.session.execute(stmt)
         return [(row.ErrorMemory, float(row.similarity_score)) for row in result]
+
+    async def search_error_memory(
+        self,
+        query_embedding: List[float],
+        limit: int = 3,
+        similarity_threshold: float = 0.6,
+    ) -> List[ErrorMemory]:
+        """
+        Busca regras de calibração semânticas para auditoria de conflito.
+        Retorna apenas entidades ErrorMemory (sem score), para consumo do ConflictResolver.
+        """
+        results = await self.search_relevant_errors(
+            query_embedding=query_embedding,
+            limit=limit,
+            similarity_threshold=similarity_threshold,
+        )
+        return [error for error, _score in results]

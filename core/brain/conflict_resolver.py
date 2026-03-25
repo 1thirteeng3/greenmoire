@@ -1,14 +1,13 @@
 import json
 import logging
-from typing import List, Optional, Tuple
-from pydantic import BaseModel, Field
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI
+from typing import List, Optional
 
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.brain.model_router import ModelRouter
 from core.integrations.embedding_provider import EmbeddingProvider
 from core.repositories.memory_repository import MemoryRepository
-from core.models.memory_models import SemanticMemory
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +17,8 @@ logger = logging.getLogger(__name__)
 # ==========================================
 
 class ConflictReport(BaseModel):
-    has_conflict: bool = Field(description="True se a proposta violar memórias de alta autoridade.")
-    conflict_type: Optional[str] = Field(description="'PERSONAL_OVERRIDE' ou 'REPEATED_ERROR', None se não houver.")
-    reason: str = Field(description="Justificação lógica da colisão gerada pelo LLM.")
-    conflicting_memory_ids: List[str] = Field(default_factory=list)
+    has_conflict: bool = Field(description="True se a solicitacao violar uma regra de calibracao passada.")
+    reason: str = Field(description="Explicacao da violacao e diretiva de correcao.")
 
 
 # ==========================================
@@ -30,114 +27,62 @@ class ConflictReport(BaseModel):
 
 class ConflictResolver:
     """
-    Guardião da Soberania Cognitiva. Avalia propostas de agentes contra a memória
-    humana verificada e o registo histórico de erros (calibração).
+    Guardiao de calibracao.
+    Avalia se o prompt atual entra em conflito com regras de comportamento
+    corrigidas no passado (ErrorMemory), utilizando o roteador agnostico.
     """
 
-    def __init__(self, embedding_provider: EmbeddingProvider, llm_client: AsyncOpenAI):
+    def __init__(self, embedding_provider: EmbeddingProvider, model_router: ModelRouter):
         self.embedding_provider = embedding_provider
-        self.llm_client = llm_client
-        # Modelo ideal para julgamento rápido (T1 Tier). Pode apontar para o LocalAI.
-        self.judge_model = "llama-3-8b-instruct"
+        self.router = model_router
 
-    async def evaluate_proposal(self, proposed_content: str, session: AsyncSession) -> ConflictReport:
+    async def evaluate_proposal(self, user_prompt: str, session: AsyncSession) -> Optional[ConflictReport]:
         """
-        Executa o pipeline completo de deteção de conflitos.
+        1) Vetoriza o prompt.
+        2) Busca regras de calibracao semanticamente similares no banco.
+        3) Usa LLM via ModelRouter (T2) para avaliar conflito logico.
         """
-        repository = MemoryRepository(session)
-
-        # 1. Vetorizar a proposta
-        proposed_embedding = await self.embedding_provider.generate_embedding(proposed_content)
-
-        # 2. Buscar Âncoras de Alta Autoridade (Personal > Error)
-        verified_memories = await self._fetch_verified_personal_data(proposed_embedding, repository)
-        known_errors = await self._fetch_unresolved_errors(proposed_embedding, repository)
-
-        if not verified_memories and not known_errors:
-            # Sem âncoras semânticas próximas na zona de alta autoridade. Caminho livre (RAG ganha).
-            return ConflictReport(has_conflict=False, reason="Nenhuma memória de alta autoridade relacionada encontrada.")
-
-        # 3. Arbitragem Lógica via LLM (Deteção de Contradição)
-        report = await self._judge_contradiction(proposed_content, verified_memories, known_errors)
-
-        if report.has_conflict:
-            logger.warning(f"Conflito Detetado: {report.conflict_type} - {report.reason}")
-
-        return report
-
-    async def _fetch_verified_personal_data(self, embedding: List[float], repository: MemoryRepository) -> List[Tuple[str, str]]:
-        """Recupera APENAS memórias com human_verified=True que sejam semanticamente similares."""
-        # Busca customizada no repositório filtrando pelo flag de autoridade
-        stmt = select(SemanticMemory).where(
-            and_(
-                SemanticMemory.human_verified == True,
-                SemanticMemory.embedding.cosine_distance(embedding) < 0.25,  # Threshold rigoroso (alta similaridade)
-            )
-        ).limit(3)
-
-        result = await repository.session.execute(stmt)
-        memories = result.scalars().all()
-        return [(str(m.id), m.content) for m in memories]
-
-    async def _fetch_unresolved_errors(self, embedding: List[float], repository: MemoryRepository) -> List[Tuple[str, str, str]]:
-        """Recupera erros baseados em colisão semântica com a proposta."""
-        error_results = await repository.search_relevant_errors(
-            embedding,
-            limit=5,
-            similarity_threshold=0.6,
-        )
-        return [(str(e.id), e.original_output, e.human_correction) for e, _score in error_results]
-
-    async def _judge_contradiction(
-        self,
-        proposal: str,
-        verified_memories: List[Tuple[str, str]],
-        known_errors: List[Tuple[str, str, str]],
-    ) -> ConflictReport:
-        """Delega a avaliação de contradição ao motor inferencial."""
-
-        personal_context = "\n".join([f"- ID: {m[0]} | Fato: {m[1]}" for m in verified_memories])
-        error_context = "\n".join([f"- Erro a evitar: {e[1]} | Correção exigida: {e[2]}" for e in known_errors])
-
-        system_prompt = f"""
-        Você é o Guardião de Conflitos de um Sistema Operacional Cognitivo.
-        Sua única função é comparar uma [Ação/Fato Proposto] com a [Memória Verificada] e os [Erros Passados].
-
-        REGRAS DE AUTORIDADE:
-        1. Se a proposta contradizer a Memória Verificada, a Memória Verificada VENCE (PERSONAL_OVERRIDE).
-        2. Se a proposta repetir um Erro Passado ignorando a Correção, o Erro VENCE (REPEATED_ERROR).
-        3. Se a proposta for apenas complementar e não contraditória, NÃO HÁ CONFLITO.
-
-        [Memória Verificada (Verdade Absoluta)]:
-        {personal_context or "Nenhuma."}
-
-        [Erros Passados (Não repetir)]:
-        {error_context or "Nenhum."}
-
-        Responda ESTRITAMENTE em formato JSON com o schema:
-        {{"has_conflict": boolean, "conflict_type": "PERSONAL_OVERRIDE" | "REPEATED_ERROR" | null, "reason": "explicação concisa", "conflicting_memory_ids": ["id1", "id2"]}}
-        """
-
         try:
-            response = await self.llm_client.chat.completions.create(
-                model=self.judge_model,
+            prompt_emb = await self.embedding_provider.generate_embedding(user_prompt)
+            repo = MemoryRepository(session)
+
+            active_rules = await repo.search_error_memory(prompt_emb, limit=3)
+            if not active_rules:
+                return None
+
+            rules_text = "\n".join(
+                [f"- Erro: {rule.original_output} | Correcao: {rule.human_correction}" for rule in active_rules]
+            )
+
+            system_prompt = f"""
+            Voce e um Auditor de Conformidade.
+            O usuario fez a seguinte solicitacao: "{user_prompt}"
+
+            No passado, o usuario estabeleceu as seguintes regras estritas de comportamento:
+            {rules_text}
+
+            Avalie se a solicitacao atual exige a aplicacao destas regras.
+            Responda ESTRITAMENTE em JSON:
+            {{"has_conflict": true/false, "reason": "motivo e como o sistema deve agir"}}
+            """
+
+            response_text = await self.router.execute_tier(
+                tier="T2",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"[Ação/Fato Proposto]:\n{proposal}"},
+                    {"role": "user", "content": "Avalie o conflito."},
                 ],
-                response_format={"type": "json_object"},
-                temperature=0.0,  # Determinismo máximo
             )
 
-            result_dict = json.loads(response.choices[0].message.content)
-            return ConflictReport(**result_dict)
+            clean_text = response_text.replace("```json", "").replace("```", "").strip()
+            result_dict = json.loads(clean_text)
+            report = ConflictReport(**result_dict)
+
+            if report.has_conflict:
+                logger.info(f"ConflictResolver: Conflito detectado! Motivo: {report.reason}")
+            return report
 
         except Exception as e:
-            logger.error(f"Falha na inferência de conflito. Assumindo conflito preventivo. Erro: {e}")
-            # Failsafe: Se o juiz falhar, bloqueamos por segurança (Fail Closed).
-            return ConflictReport(
-                has_conflict=True,
-                conflict_type="SYSTEM_ERROR",
-                reason="Falha no motor de validação. Ação bloqueada preventivamente.",
-                conflicting_memory_ids=[],
-            )
+            logger.error(f"Falha ao avaliar conflitos de calibracao: {e}")
+            # Fail-open: se o auditor falhar, nao trava o sistema.
+            return None
