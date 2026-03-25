@@ -8,4 +8,5 @@ aiohttp>=3.10
 aiofiles>=24.1
 mem0ai
 openai>=1.0
+anthropic>=0.86.0
 tiktoken>=0.7
