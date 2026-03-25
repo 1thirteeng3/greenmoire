@@ -1,14 +1,14 @@
 import json
 import logging
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
-from core.repositories.memory_repository import MemoryRepository
 from core.integrations.embedding_provider import EmbeddingProvider
-from core.models.memory_models import SemanticMemory, ErrorMemory
+from core.repositories.memory_repository import MemoryRepository
+from core.models.memory_models import SemanticMemory
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class ConflictResolver:
 
         # 2. Buscar Âncoras de Alta Autoridade (Personal > Error)
         verified_memories = await self._fetch_verified_personal_data(proposed_embedding, repository)
-        known_errors = await self._fetch_unresolved_errors(proposed_embedding, session)
+        known_errors = await self._fetch_unresolved_errors(proposed_embedding, repository)
 
         if not verified_memories and not known_errors:
             # Sem âncoras semânticas próximas na zona de alta autoridade. Caminho livre (RAG ganha).
@@ -79,15 +79,14 @@ class ConflictResolver:
         memories = result.scalars().all()
         return [(str(m.id), m.content) for m in memories]
 
-    async def _fetch_unresolved_errors(self, embedding: List[float], session: AsyncSession) -> List[Tuple[str, str, str]]:
-        """Recupera erros passados para evitar repetição (Calibração)."""
-        # Nota: ErrorMemory não tem vetor por padrão no nosso schema para economizar VRAM,
-        # mas faremos uma busca textual ou precisaremos adicionar vetor à tabela de erro no futuro.
-        # Para manter a precisão atual, faremos uma query direta aos não resolvidos.
-        stmt = select(ErrorMemory).where(ErrorMemory.resolved == False).order_by(ErrorMemory.created_at.desc()).limit(5)
-        result = await session.execute(stmt)
-        errors = result.scalars().all()
-        return [(str(e.id), e.original_output, e.human_correction) for e in errors]
+    async def _fetch_unresolved_errors(self, embedding: List[float], repository: MemoryRepository) -> List[Tuple[str, str, str]]:
+        """Recupera erros baseados em colisão semântica com a proposta."""
+        error_results = await repository.search_relevant_errors(
+            embedding,
+            limit=5,
+            similarity_threshold=0.6,
+        )
+        return [(str(e.id), e.original_output, e.human_correction) for e, _score in error_results]
 
     async def _judge_contradiction(
         self,

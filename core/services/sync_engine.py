@@ -54,6 +54,8 @@ class SyncEngineWorker(BaseEventWorker):
                 raise ValueError("O payload do evento deve conter o 'memory_id'.")
 
             await self._process_sync(memory_id, event.header.trace_id, session)
+        elif event_type == "error_memory_resolved":
+            await self._process_error_audit_sync(event.payload, session)
 
     # ==========================================
     # LÓGICA CORE DE SINCRONIZAÇÃO E CONFLITO
@@ -232,3 +234,39 @@ class SyncEngineWorker(BaseEventWorker):
             return None
 
         return await asyncio.to_thread(scan)
+
+    async def _process_error_audit_sync(self, payload: Dict[str, Any], session: AsyncSession):
+        """Mantém um log de auditoria física contínuo no Obsidian."""
+        _ = session  # reservado para futura consistência transacional com estado relacional
+        audit_file_path = self.vault_path / "System_Meta" / "Grimoire_Auditoria_Cognitiva.md"
+        audit_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        error_id = payload.get("error_id")
+        original_output = payload.get("original_output")
+        human_correction = payload.get("human_correction")
+        timestamp = payload.get("resolved_at")
+
+        # Formatação do bloco de auditoria
+        audit_entry = (
+            f"\n## Resolução: {timestamp}\n"
+            f"- **ID do Erro:** `{error_id}`\n"
+            f"- **Saída Alucinada/Incorreta:** {original_output}\n"
+            f"- **Correção Humana Aplicada:** {human_correction}\n"
+            f"---\n"
+        )
+
+        # Append assíncrono ao ficheiro
+        def _append_audit():
+            # Se o ficheiro não existir, cria com um cabeçalho
+            if not audit_file_path.exists():
+                audit_file_path.write_text(
+                    "# Registro de Calibração e Correções do Grimoire\n\n"
+                    "Este ficheiro documenta a evolução cognitiva do sistema baseada na intervenção humana.\n",
+                    encoding="utf-8",
+                )
+
+            with open(audit_file_path, "a", encoding="utf-8") as f:
+                f.write(audit_entry)
+
+        await asyncio.to_thread(_append_audit)
+        logger.info(f"Auditoria de erro {error_id} sincronizada no Obsidian.")

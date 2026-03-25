@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -10,22 +11,33 @@ class OriMnemosWrapper:
     """
 
     def __init__(self):
-        # Inicialização simulada da biblioteca ori_mnemos.
-        # Ajustar importações e configurações conforme a API oficial da ferramenta.
         self.is_ready = True
         logger.info("Ori_mnemos Wrapper inicializado.")
 
-    def record_episode(self, trace_id: str, actors: List[str], action: str, outcome: str):
-        """Regista um episódio garantindo a passagem do trace_id do Grimoire."""
+    async def store_async(self, text: str, trace_id: str, metadata: Dict[str, Any] = None) -> bool:
+        """
+        Padroniza a assinatura de gravação para ser idêntica ao Mem0Wrapper.
+        Converte o texto genérico num episódio de grafo estruturado.
+        """
         if not self.is_ready:
-            raise RuntimeError("Ori_mnemos não configurado.")
+            return False
 
-        # Lógica de mapeamento para as estruturas nativas do ori_mnemos
-        payload = {
-            "session_id": trace_id,
-            "entities": actors,
-            "event": action,
-            "result": outcome,
-        }
-        logger.debug(f"Episódio registado no ori_mnemos: {payload}")
+        def _record():
+            meta = metadata or {}
+            actors = meta.get("actors", ["system"])
+            # Lógica síncrona da biblioteca interna de grafos entraria aqui
+            logger.debug(f"Mnemosyne [Trace {trace_id}]: {text} | Atores: {actors}")
+
+        await asyncio.to_thread(_record)
         return True
+
+    async def retrieve_async(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Recupera caminhos do grafo episódico associados à query."""
+        if not self.is_ready:
+            return []
+
+        def _fetch():
+            # Simula a busca no grafo
+            return [{"trace_id": "simulated", "content": f"Graph node for: {query}"}]
+
+        return await asyncio.to_thread(_fetch)

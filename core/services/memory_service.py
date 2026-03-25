@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.infrastructure.worker_base import BaseEventWorker
@@ -30,6 +29,21 @@ class MemoryServiceWorker(BaseEventWorker):
             await repository.save_semantic_memory(
                 content=payload["content"], embedding=embedding, domain=payload["domain"],
                 metadata=payload.get("metadata", {}), human_verified=payload.get("human_verified", False)
+            )
+        elif event_type == "episodic_memory_store":
+            await repository.save_episodic_event(
+                trace_id=payload["trace_id"],
+                content=payload["content"],
+                participants=payload.get("participants", []),
+                metadata=payload.get("metadata", {}),
+            )
+        elif event_type == "error_memory_log":
+            error_embedding = await self.embedding_provider.generate_embedding(payload["original_output"])
+            await repository.log_hallucination_or_error(
+                original_output=payload["original_output"],
+                human_correction=payload["human_correction"],
+                embedding=error_embedding,
+                metadata=payload.get("metadata", {}),
             )
         elif event_type == "semantic_memory_query":
             embedding = await self.embedding_provider.generate_embedding(payload["query"])
