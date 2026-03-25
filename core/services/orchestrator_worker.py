@@ -1,7 +1,7 @@
 import asyncio
-import logging
 import json
-from typing import Any, Dict, List
+import logging
+from typing import Any, Dict, List, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -15,7 +15,6 @@ from core.brain.context_builder import ContextBuilder
 from core.brain.conflict_resolver import ConflictResolver
 from core.repositories.memory_repository import MemoryRepository
 from core.integrations.embedding_provider import EmbeddingProvider
-from core.integrations.firecrawl_provider import FirecrawlProvider
 from core.agents.agent_selector import AgentSelector
 from core.agents.tool_registry import ToolRegistry
 
@@ -37,6 +36,7 @@ class OrchestratorWorker(BaseEventWorker):
         context_builder: ContextBuilder,
         conflict_resolver: ConflictResolver,
         embedding_provider: EmbeddingProvider,
+        tool_registry: ToolRegistry,
     ):
         super().__init__(bus, session_factory, "stream:user_input", "orchestrator_group", "orchestrator_1")
         self.classifier = intent_classifier
@@ -44,8 +44,8 @@ class OrchestratorWorker(BaseEventWorker):
         self.builder = context_builder
         self.conflict_resolver = conflict_resolver
         self.embedding_provider = embedding_provider
-        self.agent_selector = AgentSelector()
-        self.tool_registry = ToolRegistry(FirecrawlProvider())
+        self.agent_selector = AgentSelector(self.embedding_provider)
+        self.tool_registry = tool_registry
 
     async def start_service(self):
         logger.info("OrchestratorWorker Iniciado. Aguardando input do usuario...")
@@ -86,7 +86,7 @@ class OrchestratorWorker(BaseEventWorker):
         # 3. Selecao de agente especializado para tarefas T3
         agent_profile = None
         if intent.tier == "T3":
-            agent_profile = self.agent_selector.select_agent(intent.primary_intent)
+            agent_profile = await self.agent_selector.select_agent(intent.primary_intent)
 
         # 4. Construcao da mente (contexto blindado + persona de agente)
         final_messages = self.builder.build_messages(
@@ -160,33 +160,44 @@ class OrchestratorWorker(BaseEventWorker):
                 content = response_message if isinstance(response_message, str) else response_message.get("content")
                 return content or "Tarefa concluida (sem output textual)."
 
-            first_call = response_message["tool_calls"][0]
-            logger.info(f"[Trace: {trace_id}] LLM solicitou ferramenta: {first_call['function']['name']}")
+            tool_calls = response_message["tool_calls"]
+            logger.info(f"[Trace: {trace_id}] LLM solicitou {len(tool_calls)} ferramenta(s).")
 
             current_messages.append(
                 {
                     "role": "assistant",
-                    "tool_calls": response_message["tool_calls"],
+                    "tool_calls": tool_calls,
                     "content": response_message.get("content", ""),
                 }
             )
 
-            tool_name = first_call["function"]["name"]
-            tool_args_json = first_call["function"].get("arguments", "{}")
-            try:
-                if isinstance(tool_args_json, dict):
-                    tool_args_json = json.dumps(tool_args_json)
-            except Exception:
-                tool_args_json = "{}"
-            tool_result = await self.tool_registry.execute_tool(tool_name, tool_args_json)
+            async def _run_tool_call(tool_call: Dict[str, Any]) -> Tuple[str, str]:
+                tool_name = tool_call["function"]["name"]
+                tool_args = tool_call["function"].get("arguments", "{}")
 
-            current_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": first_call["id"],
-                    "content": tool_result,
-                }
-            )
+                if isinstance(tool_args, dict):
+                    tool_args_json = json.dumps(tool_args)
+                elif isinstance(tool_args, str):
+                    tool_args_json = tool_args
+                else:
+                    tool_args_json = "{}"
+
+                logger.info(
+                    f"[Trace: {trace_id}] Executando fisicamente: {tool_name} com args: {tool_args_json}"
+                )
+                result_json = await self.tool_registry.execute_tool(tool_name, tool_args_json)
+                return tool_call["id"], result_json
+
+            tool_results = await asyncio.gather(*[_run_tool_call(tc) for tc in tool_calls])
+
+            for tool_call_id, tool_result_json in tool_results:
+                current_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": tool_result_json,
+                    }
+                )
 
         logger.warning(f"[Trace: {trace_id}] ReAct atingiu max_iterations ({max_iterations}).")
         return "Desculpe, a tarefa exigiu mais passos do que o meu limite de processamento permite."
