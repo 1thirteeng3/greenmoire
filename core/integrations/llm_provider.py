@@ -118,13 +118,57 @@ class LLMProvider:
         system_prompt = ""
         anthropic_messages: List[Dict[str, Any]] = []
 
-        # 1. Tratamento de mensagens e system prompt
+        # 1. Tradução do histórico de mensagens (OpenAI -> Anthropic)
         for msg in messages:
-            if msg["role"] == "system":
-                system_prompt += msg["content"] + "\n"
-            else:
-                role = msg["role"] if msg["role"] in ["user", "assistant"] else "user"
-                anthropic_messages.append({"role": role, "content": msg.get("content", "")})
+            role = msg.get("role")
+            if role == "system":
+                system_prompt += str(msg.get("content", "")) + "\n"
+                continue
+
+            # Mensagens normais de usuário e assistente
+            if role in ["user", "assistant"] and not msg.get("tool_calls"):
+                anthropic_messages.append({"role": role, "content": str(msg.get("content", ""))})
+                continue
+
+            # Assistente solicitou ferramenta (tool_calls)
+            if role == "assistant" and msg.get("tool_calls"):
+                content_blocks: List[Dict[str, Any]] = []
+                if msg.get("content"):
+                    content_blocks.append({"type": "text", "text": str(msg["content"])})
+
+                for tc in msg["tool_calls"]:
+                    raw_args = tc["function"].get("arguments", "{}")
+                    try:
+                        parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                    except Exception:
+                        parsed_args = {}
+
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["function"]["name"],
+                            "input": parsed_args,
+                        }
+                    )
+
+                anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                continue
+
+            # Resposta de ferramenta (Anthropic exige role=user com bloco tool_result)
+            if role == "tool":
+                anthropic_messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg["tool_call_id"],
+                                "content": str(msg.get("content", "")),
+                            }
+                        ],
+                    }
+                )
 
         kwargs: Dict[str, Any] = {
             "model": model,
@@ -134,7 +178,7 @@ class LLMProvider:
             "max_tokens": max_tokens,
         }
 
-        # 2. Traducao rigorosa do schema de ferramentas (OpenAI -> Anthropic)
+        # 2. Tradução rigorosa do schema de ferramentas (OpenAI -> Anthropic)
         if tools:
             anthropic_tools = []
             for t in tools:
@@ -151,10 +195,9 @@ class LLMProvider:
 
         response = await self.anthropic_client.messages.create(**kwargs)
 
-        # 3. Mapeamento reverso da resposta (Anthropic -> padrao OpenAI)
+        # 3. Mapeamento reverso (Anthropic -> padrão OpenAI-like)
         tool_calls = []
         text_content = ""
-
         for block in response.content:
             if block.type == "text":
                 text_content += block.text
@@ -164,7 +207,6 @@ class LLMProvider:
                         "id": block.id,
                         "function": {
                             "name": block.name,
-                            # Anthropic retorna dict; padronizamos para string JSON
                             "arguments": json.dumps(block.input),
                         },
                     }
@@ -172,5 +214,4 @@ class LLMProvider:
 
         if tool_calls:
             return {"content": text_content.strip(), "tool_calls": tool_calls}
-
         return text_content.strip()

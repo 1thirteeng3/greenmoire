@@ -63,7 +63,6 @@ class IntentClassifier:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Prompt: {user_prompt}"},
                 ],
-                temperature=0.0,
             )
 
             # Sanitizacao defensiva para markdown fences em modelos locais.
