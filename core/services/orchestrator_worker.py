@@ -37,6 +37,7 @@ class OrchestratorWorker(BaseEventWorker):
         conflict_resolver: ConflictResolver,
         embedding_provider: EmbeddingProvider,
         tool_registry: ToolRegistry,
+        agent_selector: AgentSelector | None = None,
     ):
         super().__init__(bus, session_factory, "stream:user_input", "orchestrator_group", "orchestrator_1")
         self.classifier = intent_classifier
@@ -44,7 +45,7 @@ class OrchestratorWorker(BaseEventWorker):
         self.builder = context_builder
         self.conflict_resolver = conflict_resolver
         self.embedding_provider = embedding_provider
-        self.agent_selector = AgentSelector(self.embedding_provider)
+        self.agent_selector = agent_selector or AgentSelector(self.embedding_provider)
         self.tool_registry = tool_registry
 
     async def start_service(self):
