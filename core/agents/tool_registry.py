@@ -1,6 +1,10 @@
+import os
 import json
 import logging
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List
+
+import aiofiles
 
 from core.integrations.firecrawl_provider import FirecrawlProvider
 
@@ -15,9 +19,14 @@ class ToolRegistry:
 
     def __init__(self, firecrawl_provider: FirecrawlProvider):
         self.firecrawl = firecrawl_provider
+        self.vault_path = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./2ndBrain")).resolve()
+        self.inbox_path = self.vault_path / "Grimoire_Inbox"
+        self.inbox_path.mkdir(parents=True, exist_ok=True)
         self._dispatch_table: Dict[str, Callable[..., Awaitable[str]]] = {
             "web_search": self.tool_web_search,
             "get_current_time": self.tool_get_current_time,
+            "write_obsidian_note": self.tool_write_obsidian_note,
+            "delete_obsidian_note": self.tool_delete_obsidian_note,
         }
 
     def get_all_schemas(self) -> List[Dict[str, Any]]:
@@ -61,6 +70,50 @@ class ToolRegistry:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_obsidian_note",
+                    "description": (
+                        "Cria ou edita uma nota no cofre do usuario. Use 'inbox' para novas ideias, "
+                        "'append' para adicionar a notas existentes, e 'overwrite' APENAS quando for "
+                        "explicitamente instruido a reescrever ou governar o cofre."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {"type": "string", "description": "Nome do arquivo (ex: 'Plano_Marketing.md')"},
+                            "content": {"type": "string", "description": "Conteudo em Markdown"},
+                            "mode": {
+                                "type": "string",
+                                "enum": ["inbox", "append", "overwrite"],
+                                "description": "Modo de escrita de seguranca.",
+                            },
+                        },
+                        "required": ["filename", "content", "mode"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_obsidian_note",
+                    "description": (
+                        "FERRAMENTA DE GOVERNANCA: Apaga permanentemente uma nota do cofre. "
+                        "Use apenas para podar informacoes duplicadas, obsoletas ou lixo cognitivo."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {
+                                "type": "string",
+                                "description": "Nome exato do arquivo a deletar (ex: 'Ideia_Antiga.md')",
+                            }
+                        },
+                        "required": ["filename"],
+                    },
+                },
+            },
         ]
 
     async def execute_tool(self, tool_name: str, arguments_json: str) -> str:
@@ -99,6 +152,52 @@ class ToolRegistry:
             f"Resultados da web para '{query}': A funcionalidade de pesquisa profunda "
             "esta operante. Conecte o endpoint de search na integracao."
         )
+
+    def _sanitize_path(self, filename: str) -> str:
+        """Prevencao contra path traversal (ex: '../../etc/passwd')."""
+        clean_name = os.path.basename(filename)
+        if not clean_name.endswith(".md"):
+            clean_name += ".md"
+        return clean_name
+
+    async def tool_write_obsidian_note(self, filename: str, content: str, mode: str) -> str:
+        """Manipula arquivos do vault com modos de seguranca."""
+        clean_name = self._sanitize_path(filename)
+
+        if mode == "inbox":
+            target_path = self.inbox_path / clean_name
+            async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
+                await f.write(content)
+            return f"Nota criada com sucesso na Quarentena/Inbox: {target_path.name}"
+
+        if mode == "append":
+            target_path = self.vault_path / clean_name
+            if not target_path.exists():
+                return f"Erro: Arquivo {clean_name} nao encontrado para append. Crie na inbox primeiro."
+
+            async with aiofiles.open(target_path, "a", encoding="utf-8") as f:
+                await f.write(f"\n\n---\n*Adicionado por Grimoire:*\n{content}")
+            return f"Conteudo adicionado (append) com sucesso a {clean_name}"
+
+        if mode == "overwrite":
+            target_path = self.vault_path / clean_name
+            async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
+                await f.write(content)
+            return f"AVISO: Nota {clean_name} sobrescrita (overwrite) com sucesso."
+
+        return "Modo de escrita invalido."
+
+    async def tool_delete_obsidian_note(self, filename: str) -> str:
+        """Apaga nota (uso recomendado para governanca)."""
+        clean_name = self._sanitize_path(filename)
+        target_path = self.vault_path / clean_name
+        if not target_path.exists():
+            target_path = self.inbox_path / clean_name
+
+        if target_path.exists():
+            os.remove(target_path)
+            return f"Governanca: Nota {clean_name} deletada permanentemente."
+        return f"Erro: Nota {clean_name} nao encontrada para exclusao."
 
     async def tool_get_current_time(self) -> str:
         """

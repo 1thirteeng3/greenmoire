@@ -27,6 +27,7 @@ class ContextBuilder:
         user_prompt: str,
         rag_context: Optional[str] = None,
         conflict_report: Optional[ConflictReport] = None,
+        agent_role: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """
         Constrói mensagens [system, user] prontas para inferência.
@@ -51,6 +52,14 @@ class ContextBuilder:
                 "Não misture com conhecimento prévio de treinamento se houver contradição.\n"
                 f"{rag_context}\n"
                 "</CONHECIMENTO_RECUPERADO>"
+            )
+
+        if agent_role:
+            logger.debug("Injetando persona do agente especializado no system prompt.")
+            system_content.append(
+                "\n<PERFIL_DE_EXECUCAO>\n"
+                f"{agent_role}\n"
+                "</PERFIL_DE_EXECUCAO>"
             )
 
         final_system_message = "\n".join(system_content)

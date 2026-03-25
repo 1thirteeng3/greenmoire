@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 from typing import Any, Dict, List
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,23 +15,11 @@ from core.brain.context_builder import ContextBuilder
 from core.brain.conflict_resolver import ConflictResolver
 from core.repositories.memory_repository import MemoryRepository
 from core.integrations.embedding_provider import EmbeddingProvider
+from core.integrations.firecrawl_provider import FirecrawlProvider
+from core.agents.agent_selector import AgentSelector
+from core.agents.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
-
-AVAILABLE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Pesquisa na web por informacoes em tempo real.",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string", "description": "Termo de busca"}},
-                "required": ["query"],
-            },
-        },
-    }
-]
 
 
 class OrchestratorWorker(BaseEventWorker):
@@ -55,6 +44,8 @@ class OrchestratorWorker(BaseEventWorker):
         self.builder = context_builder
         self.conflict_resolver = conflict_resolver
         self.embedding_provider = embedding_provider
+        self.agent_selector = AgentSelector()
+        self.tool_registry = ToolRegistry(FirecrawlProvider())
 
     async def start_service(self):
         logger.info("OrchestratorWorker Iniciado. Aguardando input do usuario...")
@@ -92,22 +83,38 @@ class OrchestratorWorker(BaseEventWorker):
 
             conflict_report = await self.conflict_resolver.evaluate_proposal(user_prompt, session)
 
-        # 3. Construcao da mente (contexto blindado)
+        # 3. Selecao de agente especializado para tarefas T3
+        agent_profile = None
+        if intent.tier == "T3":
+            agent_profile = self.agent_selector.select_agent(intent.primary_intent)
+
+        # 4. Construcao da mente (contexto blindado + persona de agente)
         final_messages = self.builder.build_messages(
             user_prompt=user_prompt,
             rag_context=rag_context_text,
             conflict_report=conflict_report,
+            agent_role=agent_profile.role_description if agent_profile else None,
         )
 
-        # 4. Execucao bifurcada (ReAct vs Direct)
+        # 5. Execucao bifurcada (ReAct vs Direct)
         if intent.tier == "T3":
             logger.info(f"[{intent.tier}] Tarefa complexa. Iniciando loop ReAct...")
-            response_text = await self._execute_react_loop(final_messages, trace_id)
+            allowed_schemas = [
+                schema
+                for schema in self.tool_registry.get_all_schemas()
+                if schema["function"]["name"] in (agent_profile.allowed_tools if agent_profile else [])
+            ]
+            response_text = await self._execute_react_loop(
+                messages=final_messages,
+                trace_id=trace_id,
+                tools=allowed_schemas,
+                max_iterations=agent_profile.max_loops if agent_profile else 5,
+            )
         else:
             logger.info(f"[{intent.tier}] Tarefa analitica/direta. Execucao single-shot.")
             response_text = await self.router.execute_tier(tier=intent.tier, messages=final_messages)
 
-        # 5. Entrega da resposta
+        # 6. Entrega da resposta
         reply_event = BaseEvent(
             header=EventHeader(
                 trace_id=trace_id,
@@ -130,6 +137,7 @@ class OrchestratorWorker(BaseEventWorker):
         self,
         messages: List[Dict[str, str]],
         trace_id: str,
+        tools: List[Dict[str, Any]],
         max_iterations: int = 5,
     ) -> str:
         """
@@ -145,7 +153,7 @@ class OrchestratorWorker(BaseEventWorker):
             response_message = await self.router.execute_tier_with_tools(
                 tier="T3",
                 messages=current_messages,
-                tools=AVAILABLE_TOOLS,
+                tools=tools,
             )
 
             if isinstance(response_message, str) or not response_message.get("tool_calls"):
@@ -163,8 +171,14 @@ class OrchestratorWorker(BaseEventWorker):
                 }
             )
 
-            # Placeholder ate a fase de ferramentas nativas.
-            tool_result = "{'status': 'sucesso', 'dado': 'Resultado simulado da pesquisa web'}"
+            tool_name = first_call["function"]["name"]
+            tool_args_json = first_call["function"].get("arguments", "{}")
+            try:
+                if isinstance(tool_args_json, dict):
+                    tool_args_json = json.dumps(tool_args_json)
+            except Exception:
+                tool_args_json = "{}"
+            tool_result = await self.tool_registry.execute_tool(tool_name, tool_args_json)
 
             current_messages.append(
                 {
