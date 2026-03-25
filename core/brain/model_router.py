@@ -80,5 +80,6 @@ class ModelRouter:
             model=model,
             messages=messages,
             temperature=temperature,
+            max_tokens=1500,
             tools=tools,
         )
