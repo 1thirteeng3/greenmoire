@@ -3,37 +3,24 @@ import os
 import logging
 import asyncio
 import tiktoken
-from typing import List, Tuple
+from typing import List
 from core.integrations.vlm_provider import VLMProvider
+from core.integrations.opendataloader_provider import OpenDataLoaderProvider
 
 logger = logging.getLogger(__name__)
 
 
-async def _call_opendataloader(file_path: str) -> Tuple[str, List[str]]:
-    """
-    Executa a extração via opendataloader-pdf.
-    Garante a preservação de tabelas e LaTeX.
-    """
-    logger.info(f"Processando {file_path} via opendataloader-pdf...")
-
-    # Simulação da execução real do opendataloader (que salva imagens num diretório temporário)
-    mock_markdown = "Contexto inicial.\n![Gráfico da Q3](/tmp/grafico_vendas.png)\nConclusão do documento."
-    mock_images = ["/tmp/grafico_vendas.png"] if os.path.exists("/tmp/grafico_vendas.png") else []
-
-    await asyncio.sleep(1)  # Simula o I/O
-    return mock_markdown, mock_images
-
-
-async def extract_and_enrich_pdf(file_path: str, vlm_provider: VLMProvider) -> str:
+async def extract_and_enrich_pdf(file_path: str, vlm_provider: VLMProvider, pdf_provider: OpenDataLoaderProvider) -> str:
     """
     Orquestra a extração estrutural e a injeção semântica multimodal.
     """
-    # 1. Extração Estrutural (Markdown + Extração física de imagens)
-    markdown_text, extracted_images = await _call_opendataloader(file_path)
+    # 1. Extração via Microsserviço Real
+    logger.info(f"Enviando {file_path} para o OpenDataLoader...")
+    markdown_text, extracted_images = await pdf_provider.extract_pdf(file_path)
 
     # 2. Processamento VLM para imagens órfãs
     if extracted_images:
-        logger.info(f"{len(extracted_images)} imagens detetadas. Iniciando enriquecimento VLM...")
+        logger.info(f"Enriquecendo {len(extracted_images)} imagens via VLM...")
 
         for img_path in extracted_images:
             img_filename = os.path.basename(img_path)
@@ -41,9 +28,15 @@ async def extract_and_enrich_pdf(file_path: str, vlm_provider: VLMProvider) -> s
             # Gera a descrição via VLM (Cloud ou Local)
             semantic_desc = await vlm_provider.describe_image(img_path)
 
-            # Substitui a tag da imagem no markdown pelo texto gerado
+            # Substitui a tag da imagem no MD pela descrição do modelo
             pattern = rf"!\[.*?\]\(.*?{re.escape(img_filename)}.*?\)"
             markdown_text = re.sub(pattern, semantic_desc, markdown_text)
+
+            # Limpeza do ficheiro temporário para não entupir o disco
+            try:
+                os.remove(img_path)
+            except OSError as e:
+                logger.warning(f"Falha ao apagar imagem temporária {img_path}: {e}")
 
     return markdown_text
 

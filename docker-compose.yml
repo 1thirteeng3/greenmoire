@@ -46,7 +46,23 @@ services:
     volumes:
       - localai_models:/models
 
+  opendataloader:
+    image: adithyask/marker-api:latest
+    container_name: grimoire_pdf_extractor
+    ports:
+      - "8000:8000"
+    environment:
+      - WORKERS=2
+      - MIN_LENGTH=10
+    volumes:
+      - marker_models:/root/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
 volumes:
   pgdata:
   redisdata:
   localai_models:
+  marker_models:

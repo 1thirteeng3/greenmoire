@@ -1,10 +1,11 @@
 import os
 import uuid
 from datetime import datetime
+from enum import Enum as PyEnum
 from typing import Any, Dict, List, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Index, String, Text, Enum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -100,3 +101,30 @@ class ObsidianSyncState(BaseModel):
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     semantic_memory: Mapped["SemanticMemory"] = relationship("SemanticMemory", back_populates="sync_state")
+
+
+# ==========================================
+# DOMÍNIO DE INGESTÃO
+# ==========================================
+class IngestionStatus(PyEnum):
+    PENDING = "PENDING"
+    DOWNLOADED = "DOWNLOADED"
+    CHUNKED = "CHUNKED"
+    VECTORIZED = "VECTORIZED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class IngestionTask(BaseModel):
+    """Máquina de estados para rastrear pipelines assíncronos de ingestão."""
+
+    __tablename__ = "ingestion_tasks"
+
+    source_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[IngestionStatus] = mapped_column(
+        Enum(IngestionStatus, name="ingestion_status_enum", create_type=False),
+        default=IngestionStatus.PENDING,
+        index=True,
+    )
+    error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0)
