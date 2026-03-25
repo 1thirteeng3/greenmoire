@@ -1,45 +1,25 @@
-from __future__ import annotations
-
-from typing import List, Optional
-from sqlalchemy import select
-
-from core.models.memory_models import MemoryEntry, MemoryType
+from typing import List, Optional, Tuple
+from sqlalchemy import select, and_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.models.memory_models import SemanticMemory, EpisodicMemory, ErrorMemory
 
 
 class MemoryRepository:
-    def __init__(self, db_session):
-        self.db = db_session
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
-    def save_memory(self, memory: MemoryEntry) -> MemoryEntry:
-        # Lógica de upsert e commit
-        existing = self.db.get(MemoryEntry, memory.id)
-        if existing:
-            existing.memory_type = memory.memory_type
-            existing.content = memory.content
-            existing.metadata_json = memory.metadata_json
-            existing.is_user_validated = memory.is_user_validated
-            existing.user_annotation = memory.user_annotation
-            existing.sync_hash = memory.sync_hash
-            existing.is_synced = memory.is_synced
-            self.db.add(existing)
-            self.db.commit()
-            self.db.refresh(existing)
-            return existing
-
-        self.db.add(memory)
-        self.db.commit()
-        self.db.refresh(memory)
+    async def save_semantic_memory(self, content: str, embedding: List[float], domain: str, metadata: dict = None, human_verified: bool = False) -> SemanticMemory:
+        memory = SemanticMemory(content=content, embedding=embedding, domain=domain, metadata_json=metadata or {}, human_verified=human_verified)
+        self.session.add(memory)
+        await self.session.flush()
         return memory
 
-    def get_error_memories(self, trace_id: Optional[str] = None) -> List[MemoryEntry]:
-        # Retorna memórias de erro, priorizando as não resolvidas/validadas
-        query = self.db.query(MemoryEntry).filter(MemoryEntry.memory_type == MemoryType.ERROR)
-        if trace_id:
-            query = query.filter(MemoryEntry.metadata_json["trace_id"].astext == trace_id)
-        query = query.order_by(MemoryEntry.is_user_validated.asc(), MemoryEntry.updated_at.desc())
-        return query.all()
-
-    def fetch_context(self, query_embedding: list, limit: int = 5) -> List[MemoryEntry]:
-        # Busca vetorial no PGVector (se aplicável localmente) ou resgate por tags
-        _ = query_embedding  # Placeholder até conexão com busca vetorial dedicada.
-        return self.db.query(MemoryEntry).order_by(MemoryEntry.updated_at.desc()).limit(limit).all()
+    async def search_semantic_memory(self, query_embedding: List[float], domain: Optional[str] = None, limit: int = 5, similarity_threshold: float = 0.75) -> List[Tuple[SemanticMemory, float]]:
+        distance_expr = SemanticMemory.embedding.cosine_distance(query_embedding)
+        similarity_expr = (1.0 - distance_expr).label("similarity_score")
+        stmt = select(SemanticMemory, similarity_expr)
+        if domain:
+            stmt = stmt.where(SemanticMemory.domain == domain)
+        stmt = stmt.where(similarity_expr >= similarity_threshold).order_by(desc(similarity_expr)).limit(limit)
+        result = await self.session.execute(stmt)
+        return [(row.SemanticMemory, float(row.similarity_score)) for row in result]

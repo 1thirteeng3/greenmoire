@@ -1,55 +1,44 @@
-from integrations.mem0_wrapper import Mem0Wrapper
-from integrations.ori_mnemos_wrapper import OriMnemosWrapper
+import logging
+from typing import Dict, Any
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from core.infrastructure.worker_base import BaseEventWorker
+from core.infrastructure.event_bus import AsyncRedisEventBus
+from core.schemas.events import BaseEvent, EventHeader
 from core.repositories.memory_repository import MemoryRepository
-from core.models.memory_models import MemoryEntry, MemoryType
+from core.integrations.embedding_provider import EmbeddingProvider
+
+logger = logging.getLogger(__name__)
 
 
-class MemoryService:
-    def __init__(self, repo: MemoryRepository, mem0: Mem0Wrapper, mnemos: OriMnemosWrapper):
-        self.repo = repo
-        self.semantic_store = mem0
-        self.episodic_store = mnemos
+class MemoryServiceWorker(BaseEventWorker):
+    def __init__(self, bus: AsyncRedisEventBus, session_factory: async_sessionmaker[AsyncSession], embedding_provider: EmbeddingProvider):
+        super().__init__(bus, session_factory, stream_name="stream:memory", group_name="memory_service_group", consumer_name="memory_worker_1")
+        self.embedding_provider = embedding_provider
 
-    def record_interaction(self, input_data: str, output_data: str, trace_id: str):
-        """Salva o fluxo natural da conversa na memória episódica."""
-        self.episodic_store.add(
-            content=f"User: {input_data}\nSystem: {output_data}",
-            metadata={"trace_id": trace_id, "type": "interaction"},
-        )
+    async def start_service(self):
+        logger.info("MemoryService Daemon iniciado.")
+        await self.start(self.handle_event)
 
-    def record_error(self, error_description: str, trace_id: str, context: dict):
-        """
-        Salva na Error Memory. Regra de Governança:
-        'System writes, human governs — system cannot delete its own errors'
-        """
-        error_entry = MemoryEntry(
-            id=context.get("id", f"error::{trace_id}"),
-            memory_type=MemoryType.ERROR,
-            content=error_description,
-            metadata_json={"trace_id": trace_id, **(context or {})},
-            is_user_validated=False,
-            user_annotation=context.get("user_annotation") if context else None,
-        )
-        self.repo.save_memory(error_entry)
+    async def handle_event(self, event: BaseEvent, session: AsyncSession):
+        repository = MemoryRepository(session)
+        event_type = event.header.event_type
+        payload = event.payload
 
-    def extract_semantic_knowledge(self, payload: str):
-        """Ingere conhecimento factual na memória semântica."""
-        self.semantic_store.add(content=payload)
+        if event_type == "semantic_memory_store":
+            embedding = await self.embedding_provider.generate_embedding(payload["content"])
+            await repository.save_semantic_memory(
+                content=payload["content"], embedding=embedding, domain=payload["domain"],
+                metadata=payload.get("metadata", {}), human_verified=payload.get("human_verified", False)
+            )
+        elif event_type == "semantic_memory_query":
+            embedding = await self.embedding_provider.generate_embedding(payload["query"])
+            results = await repository.search_semantic_memory(embedding, payload.get("domain"), payload.get("limit", 5))
 
-    def retrieve_cognitive_context(self, query: str) -> dict:
-        """
-        Busca contexto respeitando a hierarquia de autoridade.
-        1. Busca regras e fatos no Personal Vault (via SyncEngine repo)
-        2. Busca falhas conhecidas na Error Memory para evitar repetição
-        3. Busca contexto geral Semântico/Episódico
-        """
-        errors = self.repo.get_error_memories()
-        semantic = self.semantic_store.search(query=query, limit=5)
-        episodic = self.episodic_store.search(query=query, limit=5)
-        return {
-            "authority_order": ["personal", "error", "rag"],
-            "personal": [],
-            "errors": [{"id": item.id, "content": item.content} for item in errors],
-            "semantic": semantic,
-            "episodic": episodic,
-        }
+            reply_event = BaseEvent(
+                header=EventHeader(trace_id=event.header.trace_id, correlation_id=event.header.event_id, source_service="memory_service", event_type="semantic_memory_result"),
+                payload={"results": [{"id": str(m.id), "content": m.content, "score": s} for m, s in results], "original_query": payload["query"]}
+            )
+            await self.bus.publish(event.metadata.get("reply_to_stream"), reply_event)
+        else:
+            raise ValueError(f"Evento não suportado: {event_type}")
