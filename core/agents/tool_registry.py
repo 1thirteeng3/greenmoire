@@ -160,32 +160,47 @@ class ToolRegistry:
             clean_name += ".md"
         return clean_name
 
-    async def tool_write_obsidian_note(self, filename: str, content: str, mode: str) -> str:
-        """Manipula arquivos do vault com modos de seguranca."""
+    async def tool_write_obsidian_note(self, filename: str, content: str, mode: str = "inbox") -> str:
+        """
+        Manipula ficheiros físicos com base no modo de segurança.
+        Aplica a política Fail-Safe: qualquer anomalia força o modo 'inbox'.
+        """
         clean_name = self._sanitize_path(filename)
 
-        if mode == "inbox":
+        valid_modes = ["inbox", "append", "overwrite"]
+        safe_mode = mode.lower() if mode and mode.lower() in valid_modes else "inbox"
+
+        if safe_mode == "inbox":
             target_path = self.inbox_path / clean_name
+
+            # Evita colisão de nomes na inbox criando versões incrementais
+            counter = 1
+            while target_path.exists():
+                target_path = self.inbox_path / f"{clean_name.replace('.md', '')}_v{counter}.md"
+                counter += 1
+
             async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
                 await f.write(content)
-            return f"Nota criada com sucesso na Quarentena/Inbox: {target_path.name}"
+            return f"Sucesso (Fail-Safe Ativo): Nota salva com segurança na Quarentena/Inbox: {target_path.name}"
 
-        if mode == "append":
+        if safe_mode == "append":
             target_path = self.vault_path / clean_name
             if not target_path.exists():
-                return f"Erro: Arquivo {clean_name} nao encontrado para append. Crie na inbox primeiro."
+                # Auto-correção: se append falhar por arquivo inexistente, desvia para inbox.
+                return await self.tool_write_obsidian_note(filename, content, mode="inbox")
 
             async with aiofiles.open(target_path, "a", encoding="utf-8") as f:
                 await f.write(f"\n\n---\n*Adicionado por Grimoire:*\n{content}")
-            return f"Conteudo adicionado (append) com sucesso a {clean_name}"
+            return f"Sucesso: Conteúdo adicionado ao final do arquivo {clean_name}"
 
-        if mode == "overwrite":
+        if safe_mode == "overwrite":
             target_path = self.vault_path / clean_name
             async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
                 await f.write(content)
-            return f"AVISO: Nota {clean_name} sobrescrita (overwrite) com sucesso."
+            return f"AVISO DE GOVERNANÇA: Nota original {clean_name} foi totalmente sobrescrita."
 
-        return "Modo de escrita invalido."
+        # Guard clause adicional (na prática não alcançável após safe_mode)
+        return await self.tool_write_obsidian_note(filename, content, mode="inbox")
 
     async def tool_delete_obsidian_note(self, filename: str) -> str:
         """Apaga nota (uso recomendado para governanca)."""

@@ -45,7 +45,11 @@ class AgentSelector:
                     name="WriterAgent",
                     role_description=(
                         "Voce e um Escritor Tecnico e Arquivista. Sua funcao e formatar dados "
-                        "perfeitamente em Markdown e salvar documentos no cofre do usuario."
+                        "em Markdown e salvar documentos. REGRA DE SEGURANCA MAXIMA: Ao usar a "
+                        "ferramenta 'write_obsidian_note', voce DEVE SEMPRE usar mode='inbox' "
+                        "como padrao absoluto, a menos que o usuario use verbos explicitos de "
+                        "modificacao (como 'adicione a', 'atualize' ou 'sobrescreva'). "
+                        "Na duvida, escolha sempre 'inbox'."
                     ),
                     allowed_tools=["write_obsidian_note", "get_current_time"],
                     max_loops=4,
