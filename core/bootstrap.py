@@ -17,6 +17,9 @@ from core.brain.conflict_resolver import ConflictResolver
 # Agentes e Ferramentas
 from core.agents.tool_registry import ToolRegistry
 from core.agents.agent_selector import AgentSelector
+from core.agents.planner_agent import PlannerAgent
+from core.agents.executor_agent import ExecutorAgent
+from core.agents.auditor_agent import AuditorAgent
 
 # Workers
 from core.services.orchestrator_worker import OrchestratorWorker
@@ -49,6 +52,9 @@ class ApplicationContainer:
         self.tool_registry = ToolRegistry(self.firecrawl_provider)
         self.agent_selector = AgentSelector(self.embedding_provider)
         self.intent_classifier = IntentClassifier(self.model_router)
+        self.planner_agent = PlannerAgent(self.model_router)
+        self.executor_agent = ExecutorAgent(self.model_router, self.tool_registry)
+        self.auditor_agent = AuditorAgent(self.model_router)
 
         # Nivel 3: Orquestracao (O Maestro)
         self.orchestrator_worker = OrchestratorWorker(
@@ -59,8 +65,10 @@ class ApplicationContainer:
             context_builder=self.context_builder,
             conflict_resolver=self.conflict_resolver,
             embedding_provider=self.embedding_provider,
-            tool_registry=self.tool_registry,
             agent_selector=self.agent_selector,
+            planner_agent=self.planner_agent,
+            executor_agent=self.executor_agent,
+            auditor_agent=self.auditor_agent,
         )
         logger.info("Grafo de dependencias resolvido e instanciado com sucesso.")
 
