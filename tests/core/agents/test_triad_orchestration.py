@@ -47,6 +47,21 @@ class MockTierEngine(TierEngine):
         return policies.get(tier.upper(), policies["T2"])
 
 
+class DegenerateTierEngine(TierEngine):
+    """Mock onde todos os tiers usam o mesmo modelo."""
+
+    def get_policy(self, tier: str) -> TierPolicy:
+        return TierPolicy(
+            tier_name=tier,
+            provider="openai",
+            model="gpt-4o",
+            max_tokens=1000,
+            temperature=0.0,
+            allows_tools=True,
+            timeout_seconds=10,
+        )
+
+
 class MockModelRouter:
     """Simula respostas do LLM para componentes isolados."""
 
@@ -109,6 +124,23 @@ async def test_auditor_agent_strict_routing():
     called_tier = router.execute_tier.call_args.kwargs.get("tier")
     assert called_tier in ["T1", "T2"]
     assert called_tier != "T3"
+
+
+@pytest.mark.asyncio
+async def test_auditor_agent_degenerate_scenario_fallback():
+    """
+    Se todos os tiers tiverem o mesmo modelo, o Auditor aplica fallback cruzado
+    sem quebrar a execução.
+    """
+    router = MockModelRouter()
+    degenerate_engine = DegenerateTierEngine()
+    auditor = AuditorAgent(router, degenerate_engine)
+
+    fallback_tier = auditor._get_strict_auditor_tier(executor_tier="T3")
+    assert fallback_tier == "T2"
+
+    fallback_tier_alt = auditor._get_strict_auditor_tier(executor_tier="T2")
+    assert fallback_tier_alt == "T3"
 
 
 @pytest.mark.asyncio
