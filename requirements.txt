@@ -10,3 +10,5 @@ mem0ai
 openai>=1.0
 anthropic>=0.86.0
 tiktoken>=0.7
+fastapi>=0.135
+uvicorn>=0.42
