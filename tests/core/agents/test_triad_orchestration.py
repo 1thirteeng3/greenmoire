@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -127,17 +128,21 @@ async def test_auditor_agent_strict_routing():
 
 
 @pytest.mark.asyncio
-async def test_auditor_agent_degenerate_scenario_fallback():
+async def test_auditor_agent_degenerate_scenario_fallback(caplog):
     """
-    Se todos os tiers tiverem o mesmo modelo, o Auditor aplica fallback cruzado
-    sem quebrar a execução.
+    Se todos os tiers tiverem a mesma assinatura, o Auditor aplica fallback
+    e emite alerta critico de governanca.
     """
     router = MockModelRouter()
     degenerate_engine = DegenerateTierEngine()
     auditor = AuditorAgent(router, degenerate_engine)
 
-    fallback_tier = auditor._get_strict_auditor_tier(executor_tier="T3")
+    with caplog.at_level(logging.WARNING):
+        fallback_tier = auditor._get_strict_auditor_tier(executor_tier="T3")
+
     assert fallback_tier == "T2"
+    assert "ALERTA CRITICO DE GOVERNANCA" in caplog.text
+    assert "assinatura de modelo" in caplog.text
 
     fallback_tier_alt = auditor._get_strict_auditor_tier(executor_tier="T2")
     assert fallback_tier_alt == "T3"

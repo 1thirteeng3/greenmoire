@@ -1,7 +1,7 @@
 import json
 import logging
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from core.brain.model_router import ModelRouter
 from core.brain.tier_engine import TierEngine
@@ -36,24 +36,26 @@ class AuditorAgent:
         Enforcement estrito: seleciona uma camada com modelo divergente do executor.
         """
         executor_policy = self.engine.get_policy(executor_tier)
+        executor_sig = (executor_policy.provider, executor_policy.model)
 
         for candidate_tier in ["T1", "T2", "T3"]:
             if candidate_tier == executor_tier:
                 continue
 
             candidate_policy = self.engine.get_policy(candidate_tier)
-            if candidate_policy.model != executor_policy.model:
+            candidate_sig = (candidate_policy.provider, candidate_policy.model)
+            if candidate_sig != executor_sig:
                 logger.debug(
-                    "AuditorAgent: Modelo divergente encontrado. Executor(%s) vs Auditor(%s)",
-                    executor_policy.model,
-                    candidate_policy.model,
+                    "AuditorAgent: Assinatura divergente encontrada. Executor%s vs Auditor%s",
+                    executor_sig,
+                    candidate_sig,
                 )
                 return candidate_tier
 
-        # Fallback de governanca caso todos os tiers tenham o mesmo modelo.
+        # Fallback de governanca caso todos os tiers tenham a mesma assinatura.
         logger.warning(
-            "ALERTA CRITICO DE GOVERNANCA: Todos os Tiers estao configurados com o mesmo "
-            "modelo. O vies de confirmacao nao pode ser evitado."
+            "ALERTA CRITICO DE GOVERNANCA: Todos os Tiers do sistema possuem a mesma "
+            "assinatura de modelo. O vies de confirmacao nao pode ser evitado."
         )
         return "T2" if executor_tier == "T3" else "T3"
 
@@ -66,7 +68,7 @@ class AuditorAgent:
         # 1. Enforcement de roteamento cruzado.
         auditor_tier = self._get_strict_auditor_tier(executor_tier)
         logger.info(
-            "AuditorAgent: Iniciando auditoria cruzada estrita. Roteando para a camada %s.",
+            "AuditorAgent: Iniciando auditoria cruzada estrita na camada %s.",
             auditor_tier,
         )
 
@@ -91,7 +93,7 @@ class AuditorAgent:
                 {
                     "role": "user",
                     "content": (
-                        "PROMPT ORIGINAL DO USUARIO:\n"
+                        "PROMPT ORIGINAL:\n"
                         f"{original_prompt}\n\n"
                         "SAIDA DO EXECUTOR:\n"
                         f"{executor_output}"
@@ -110,13 +112,14 @@ class AuditorAgent:
                 "APROVADA" if report.approved else "REPROVADA",
             )
             return report
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, ValidationError) as exc:
             logger.error(
-                "AuditorAgent: Falha no parsing do JSON (%s). "
-                "Forcando aprovacao por fail-open de seguranca continua.",
+                "AuditorAgent: Falha na validacao do relatorio (%s). "
+                "Forcando aprovacao por fail-open. Detalhes: %s",
+                type(exc).__name__,
                 exc,
             )
             return AuditReport(
                 approved=True,
-                critique="Falha no parser do Auditor. Resposta liberada.",
+                critique="Falha no parser/schema do Auditor. Resposta liberada.",
             )
