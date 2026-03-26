@@ -4,23 +4,30 @@ from core.schemas.ingestion import (
     ChunkedContent,
     ContentChunkedEvent,
     ContentExtractedEvent,
+    ContentVectorizedEvent,
     IngestionRequest,
     IngestionRequestedEvent,
     IngestionTask,
     IngestionTaskStatus,
-    IngestionTaskType,
+    IngestionSourceType,
     VectorizedContent,
-    VectorsPersistedEvent,
 )
 from core.schemas.memory import BaseMemoryEntity, EpisodicMemory, ErrorMemory, MemoryMetadata, SemanticMemory
-from core.schemas.sync import ObsidianSyncState, ObsidianSyncStatus
+from core.schemas.sync import ObsidianSyncState, SyncJobStatus, SyncLockStatus
 from core.schemas.tools import (
     BaseToolInput,
-    SearchMemoryToolInput,
+    FetchUrlToolInput,
     ToolCallEnvelope,
     ToolName,
-    UpsertSemanticMemoryToolInput,
+    UpsertMemoryToolInput,
+    WebSearchToolInput,
+    WriteNoteToolInput,
 )
+
+# Backward-compat aliases for older imports.
+SearchMemoryToolInput = WebSearchToolInput
+UpsertSemanticMemoryToolInput = UpsertMemoryToolInput
+ObsidianSyncStatus = SyncJobStatus
 
 __all__ = [
     "BaseEvent",
@@ -33,7 +40,7 @@ __all__ = [
     "IntentTier",
     "ParsedIntent",
     "ExecutionPlan",
-    "IngestionTaskType",
+    "IngestionSourceType",
     "IngestionTaskStatus",
     "IngestionTask",
     "IngestionRequest",
@@ -42,12 +49,18 @@ __all__ = [
     "IngestionRequestedEvent",
     "ContentExtractedEvent",
     "ContentChunkedEvent",
-    "VectorsPersistedEvent",
+    "ContentVectorizedEvent",
     "ToolName",
     "BaseToolInput",
+    "WebSearchToolInput",
+    "FetchUrlToolInput",
+    "WriteNoteToolInput",
+    "UpsertMemoryToolInput",
     "SearchMemoryToolInput",
     "UpsertSemanticMemoryToolInput",
     "ToolCallEnvelope",
+    "SyncLockStatus",
+    "SyncJobStatus",
     "ObsidianSyncStatus",
     "ObsidianSyncState",
 ]

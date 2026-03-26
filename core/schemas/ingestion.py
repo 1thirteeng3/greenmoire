@@ -119,3 +119,8 @@ class ContentVectorizedEvent(BaseModel):
     content: VectorizedContent
 
     model_config = ConfigDict(extra="forbid")
+
+
+# Backward-compatibility aliases for legacy imports used across modules.
+IngestionTaskType = IngestionSourceType
+VectorsPersistedEvent = ContentVectorizedEvent
