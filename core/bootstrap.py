@@ -54,7 +54,7 @@ class ApplicationContainer:
         self.intent_classifier = IntentClassifier(self.model_router)
         self.planner_agent = PlannerAgent(self.model_router)
         self.executor_agent = ExecutorAgent(self.model_router, self.tool_registry)
-        self.auditor_agent = AuditorAgent(self.model_router)
+        self.auditor_agent = AuditorAgent(self.model_router, self.tier_engine)
 
         # Nivel 3: Orquestracao (O Maestro)
         self.orchestrator_worker = OrchestratorWorker(

@@ -126,8 +126,12 @@ class OrchestratorWorker(BaseEventWorker):
                     correction_directive=last_critique,
                 )
 
-                # O auditor (T2) valida o trabalho para evitar vies de confirmacao do T3
-                audit_report = await self.auditor.audit_execution(user_prompt, final_output)
+                # O auditor valida o trabalho, impondo modelo cruzado.
+                audit_report = await self.auditor.audit_execution(
+                    original_prompt=user_prompt,
+                    executor_output=final_output,
+                    executor_tier="T3",
+                )
 
                 if audit_report.approved:
                     logger.info("[%s] Saida APROVADA pelo Auditor.", trace_id)
