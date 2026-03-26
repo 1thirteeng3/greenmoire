@@ -103,6 +103,7 @@ class OrchestratorWorker(BaseEventWorker):
                 user_prompt,
                 rag_context or "",
                 agent_profile.allowed_tools,
+                agent_profile.role_description,
             )
 
             # C) Execucao + Auditoria + Recuperacao (max 2 tentativas)
