@@ -18,7 +18,10 @@ class FirecrawlProvider:
     def _get_headers(self) -> dict:
         if not self.api_key:
             raise ValueError("Firecrawl API Key ausente.")
-        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     async def scrape_url(self, url: str) -> Optional[Dict[str, Any]]:
         """Extrai o Markdown limpo de uma única URL."""
@@ -26,7 +29,9 @@ class FirecrawlProvider:
         payload = {"url": url, "formats": ["markdown"], "onlyMainContent": True}
 
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
-            async with session.post(endpoint, json=payload, headers=self._get_headers()) as response:
+            async with session.post(
+                endpoint, json=payload, headers=self._get_headers()
+            ) as response:
                 if response.status != 200:
                     raise RuntimeError(f"Falha no Firecrawl: {await response.text()}")
 
@@ -40,7 +45,9 @@ class FirecrawlProvider:
                     "source_url": url,
                 }
 
-    async def crawl_website(self, url: str, max_depth: int = 2, max_pages: int = 10) -> List[Dict[str, Any]]:
+    async def crawl_website(
+        self, url: str, max_depth: int = 2, max_pages: int = 10
+    ) -> List[Dict[str, Any]]:
         """Submete um job de crawl profundo e faz polling até a conclusão."""
         endpoint = f"{self.base_url}/crawl"
         payload = {
@@ -51,9 +58,13 @@ class FirecrawlProvider:
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(endpoint, json=payload, headers=self._get_headers()) as response:
+            async with session.post(
+                endpoint, json=payload, headers=self._get_headers()
+            ) as response:
                 if response.status != 200:
-                    raise RuntimeError(f"Falha ao iniciar Crawl: {await response.text()}")
+                    raise RuntimeError(
+                        f"Falha ao iniciar Crawl: {await response.text()}"
+                    )
                 job_id = (await response.json()).get("id")
 
             if not job_id:
@@ -65,7 +76,9 @@ class FirecrawlProvider:
             # Polling Assíncrono
             while True:
                 await asyncio.sleep(5)
-                async with session.get(status_endpoint, headers=self._get_headers()) as status_resp:
+                async with session.get(
+                    status_endpoint, headers=self._get_headers()
+                ) as status_resp:
                     status_data = await status_resp.json()
                     status = status_data.get("status")
 
@@ -77,7 +90,9 @@ class FirecrawlProvider:
                                 pages.append(
                                     {
                                         "markdown": item["markdown"],
-                                        "source_url": item.get("metadata", {}).get("sourceURL", url),
+                                        "source_url": item.get("metadata", {}).get(
+                                            "sourceURL", url
+                                        ),
                                     }
                                 )
                         return pages

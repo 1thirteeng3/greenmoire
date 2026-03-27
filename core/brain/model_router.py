@@ -24,7 +24,9 @@ class ModelRouter:
     ) -> str:
         """Execução padrão sem ferramentas (T1/T2)."""
         policy = self.engine.get_policy(tier)
-        logger.debug(f"Router: Executando {tier} ({policy.model}). Timeout: {policy.timeout_seconds}s")
+        logger.debug(
+            f"Router: Executando {tier} ({policy.model}). Timeout: {policy.timeout_seconds}s"
+        )
 
         try:
             result = await asyncio.wait_for(
@@ -39,7 +41,9 @@ class ModelRouter:
             )
             return result if isinstance(result, str) else result.get("content", "")
         except asyncio.TimeoutError:
-            logger.error(f"Timeout Critico: Camada {tier} excedeu {policy.timeout_seconds} segundos.")
+            logger.error(
+                f"Timeout Critico: Camada {tier} excedeu {policy.timeout_seconds} segundos."
+            )
             return '{"error": "timeout", "message": "O modelo excedeu o tempo limite de resposta."}'
 
     async def execute_tier_with_tools(

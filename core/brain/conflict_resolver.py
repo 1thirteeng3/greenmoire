@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,14 +16,18 @@ logger = logging.getLogger(__name__)
 # CONTRATOS DE DADOS DO RESOLVEDOR
 # ==========================================
 
+
 class ConflictReport(BaseModel):
-    has_conflict: bool = Field(description="True se a solicitacao violar uma regra de calibracao passada.")
+    has_conflict: bool = Field(
+        description="True se a solicitacao violar uma regra de calibracao passada."
+    )
     reason: str = Field(description="Explicacao da violacao e diretiva de correcao.")
 
 
 # ==========================================
 # NÚCLEO DO PROTOCOLO DE DETEÇÃO
 # ==========================================
+
 
 class ConflictResolver:
     """
@@ -32,11 +36,15 @@ class ConflictResolver:
     corrigidas no passado (ErrorMemory), utilizando o roteador agnostico.
     """
 
-    def __init__(self, embedding_provider: EmbeddingProvider, model_router: ModelRouter):
+    def __init__(
+        self, embedding_provider: EmbeddingProvider, model_router: ModelRouter
+    ):
         self.embedding_provider = embedding_provider
         self.router = model_router
 
-    async def evaluate_proposal(self, user_prompt: str, session: AsyncSession) -> Optional[ConflictReport]:
+    async def evaluate_proposal(
+        self, user_prompt: str, session: AsyncSession
+    ) -> Optional[ConflictReport]:
         """
         1) Vetoriza o prompt.
         2) Busca regras de calibracao semanticamente similares no banco.
@@ -51,7 +59,10 @@ class ConflictResolver:
                 return None
 
             rules_text = "\n".join(
-                [f"- Erro: {rule.original_output} | Correcao: {rule.human_correction}" for rule in active_rules]
+                [
+                    f"- Erro: {rule.original_output} | Correcao: {rule.human_correction}"
+                    for rule in active_rules
+                ]
             )
 
             system_prompt = f"""
@@ -79,7 +90,9 @@ class ConflictResolver:
             report = ConflictReport(**result_dict)
 
             if report.has_conflict:
-                logger.info(f"ConflictResolver: Conflito detectado! Motivo: {report.reason}")
+                logger.info(
+                    f"ConflictResolver: Conflito detectado! Motivo: {report.reason}"
+                )
             return report
 
         except Exception as e:

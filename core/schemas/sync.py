@@ -27,9 +27,14 @@ class ObsidianSyncState(BaseModel):
     """
 
     memory_id: str = Field(..., description="ID da memória semântica de referência.")
-    file_path: str = Field(..., description="Caminho absoluto/relativo no vault Obsidian.")
+    file_path: str = Field(
+        ..., description="Caminho absoluto/relativo no vault Obsidian."
+    )
     lock_status: SyncLockStatus = Field(default=SyncLockStatus.UNLOCKED)
-    write_lock: bool = Field(default=False, description="True quando o arquivo está em seção crítica de escrita.")
+    write_lock: bool = Field(
+        default=False,
+        description="True quando o arquivo está em seção crítica de escrita.",
+    )
     last_sync_hash: str | None = Field(
         default=None,
         description="Hash do conteúdo sincronizado por último para detectar divergência manual.",

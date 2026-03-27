@@ -10,7 +10,9 @@ from core.integrations.opendataloader_provider import OpenDataLoaderProvider
 logger = logging.getLogger(__name__)
 
 
-async def extract_and_enrich_pdf(file_path: str, vlm_provider: VLMProvider, pdf_provider: OpenDataLoaderProvider) -> str:
+async def extract_and_enrich_pdf(
+    file_path: str, vlm_provider: VLMProvider, pdf_provider: OpenDataLoaderProvider
+) -> str:
     """
     Orquestra a extração estrutural e a injeção semântica multimodal.
     """
@@ -44,6 +46,7 @@ async def extract_and_enrich_pdf(file_path: str, vlm_provider: VLMProvider, pdf_
 # ==========================================
 # FRAGMENTAÇÃO SEMÂNTICA (CHUNKING)
 # ==========================================
+
 
 def _chunk_text_sync(text: str, max_tokens: int = 400) -> List[str]:
     """Fragmentação inteligente baseada em parágrafos e contagem de tokens."""

@@ -20,8 +20,12 @@ class VLMProvider:
         if self.provider_type == "localai":
             self.base_url = os.getenv("VLM_BASE_URL", "http://localhost:8080/v1")
             self.api_key = os.getenv("VLM_API_KEY", "sk-localai-dummy")
-            self.model_name = os.getenv("VLM_MODEL_NAME", "llava")  # Modelo VLM padrão no LocalAI
-            self.timeout = 120.0  # Timeout estendido: VLMs locais são pesados e demorados
+            self.model_name = os.getenv(
+                "VLM_MODEL_NAME", "llava"
+            )  # Modelo VLM padrão no LocalAI
+            self.timeout = (
+                120.0  # Timeout estendido: VLMs locais são pesados e demorados
+            )
         else:
             self.base_url = os.getenv("VLM_BASE_URL", "https://api.openai.com/v1")
             self.api_key = os.getenv("VLM_API_KEY", "")
@@ -29,7 +33,9 @@ class VLMProvider:
             self.timeout = 30.0  # Timeout padrão para APIs na nuvem
 
         if not self.api_key and self.provider_type == "openai":
-            logger.warning("VLM_PROVIDER está configurado para 'openai', mas a VLM_API_KEY não foi fornecida.")
+            logger.warning(
+                "VLM_PROVIDER está configurado para 'openai', mas a VLM_API_KEY não foi fornecida."
+            )
 
         self.client = AsyncOpenAI(
             base_url=self.base_url,
@@ -38,7 +44,9 @@ class VLMProvider:
             timeout=self.timeout,
         )
 
-        logger.info(f"VLMProvider inicializado. Roteamento: {self.provider_type.upper()} | Modelo: {self.model_name}")
+        logger.info(
+            f"VLMProvider inicializado. Roteamento: {self.provider_type.upper()} | Modelo: {self.model_name}"
+        )
 
     def _encode_image(self, image_path: str) -> str:
         """Converte imagem local para Base64."""
@@ -66,7 +74,12 @@ class VLMProvider:
                                     "Se contiver texto legível, transcreva-o. Seja técnico e objetivo."
                                 ),
                             },
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
                         ],
                     }
                 ],
@@ -77,6 +90,8 @@ class VLMProvider:
             return f"\n> [Descrição Semântica Extratada da Imagem: {description}]\n"
 
         except Exception as e:
-            logger.error(f"Falha na inferência VLM ({self.provider_type}) para a imagem {image_path}: {e}")
+            logger.error(
+                f"Falha na inferência VLM ({self.provider_type}) para a imagem {image_path}: {e}"
+            )
             # Em vez de quebrar a ingestão inteira por causa de uma imagem, deixamos um marcador de falha
             return "\n> [Erro de Extração Visual: Imagem não processada devido a falha no VLM]\n"

@@ -21,18 +21,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("error_memories", sa.Column("original_output", sa.Text(), nullable=True))
-    op.add_column("error_memories", sa.Column("human_correction", sa.Text(), nullable=True))
-    op.add_column("error_memories", sa.Column("resolved", sa.Boolean(), nullable=False, server_default=sa.text("false")))
+    op.add_column(
+        "error_memories", sa.Column("original_output", sa.Text(), nullable=True)
+    )
+    op.add_column(
+        "error_memories", sa.Column("human_correction", sa.Text(), nullable=True)
+    )
+    op.add_column(
+        "error_memories",
+        sa.Column(
+            "resolved", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+    )
     op.add_column("error_memories", sa.Column("embedding", Vector(1536), nullable=True))
 
-    op.execute("UPDATE error_memories SET original_output = message WHERE original_output IS NULL")
-    op.execute("UPDATE error_memories SET human_correction = COALESCE(metadata->>'human_correction', '') WHERE human_correction IS NULL")
+    op.execute(
+        "UPDATE error_memories SET original_output = message WHERE original_output IS NULL"
+    )
+    op.execute(
+        "UPDATE error_memories SET human_correction = COALESCE(metadata->>'human_correction', '') WHERE human_correction IS NULL"
+    )
     op.execute("UPDATE error_memories SET resolved = false WHERE resolved IS NULL")
 
     op.alter_column("error_memories", "original_output", nullable=False)
     op.alter_column("error_memories", "human_correction", nullable=False)
-    op.create_index("ix_error_memories_resolved", "error_memories", ["resolved"], unique=False)
+    op.create_index(
+        "ix_error_memories_resolved", "error_memories", ["resolved"], unique=False
+    )
     op.execute(
         "CREATE INDEX IF NOT EXISTS hnsw_idx_error "
         "ON error_memories USING hnsw (embedding vector_cosine_ops)"
@@ -41,14 +56,33 @@ def upgrade() -> None:
     op.create_table(
         "obsidian_sync_states",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "metadata_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.Column("semantic_memory_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("file_path", sa.Text(), nullable=False),
         sa.Column("last_sync_hash", sa.String(length=64), nullable=False),
-        sa.Column("is_locked", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.ForeignKeyConstraint(["semantic_memory_id"], ["semantic_memories.id"], ondelete="CASCADE"),
+        sa.Column(
+            "is_locked", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+        sa.ForeignKeyConstraint(
+            ["semantic_memory_id"], ["semantic_memories.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("semantic_memory_id"),
         sa.UniqueConstraint("file_path"),

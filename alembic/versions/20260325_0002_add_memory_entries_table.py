@@ -33,7 +33,12 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("memory_type", memory_type_enum, nullable=False),
         sa.Column("content", sa.String(), nullable=False),
-        sa.Column("metadata_json", sa.JSON(), nullable=True, server_default=sa.text("'{}'::json")),
+        sa.Column(
+            "metadata_json",
+            sa.JSON(),
+            nullable=True,
+            server_default=sa.text("'{}'::json"),
+        ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.Column("is_user_validated", sa.Boolean(), nullable=True),
@@ -43,8 +48,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    op.create_index("ix_memory_entries_memory_type", "memory_entries", ["memory_type"], unique=False)
-    op.create_index("ix_memory_entries_created_at", "memory_entries", ["created_at"], unique=False)
+    op.create_index(
+        "ix_memory_entries_memory_type", "memory_entries", ["memory_type"], unique=False
+    )
+    op.create_index(
+        "ix_memory_entries_created_at", "memory_entries", ["created_at"], unique=False
+    )
 
 
 def downgrade() -> None:

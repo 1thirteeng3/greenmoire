@@ -77,22 +77,31 @@ async def chat_synchronous(request: ChatRequest) -> ChatResponse:
                 try:
                     reply_event = BaseEvent.model_validate_json(raw_json)
                 except Exception:
-                    logger.warning("[%s] API Gateway: payload invalido no stream de saida.", trace_id)
+                    logger.warning(
+                        "[%s] API Gateway: payload invalido no stream de saida.",
+                        trace_id,
+                    )
                     continue
 
                 if (
                     reply_event.header.trace_id == trace_id
                     and reply_event.header.event_type == "cognitive_response_delivered"
                 ):
-                    logger.info("[%s] API Gateway: resposta recebida do orquestrador.", trace_id)
+                    logger.info(
+                        "[%s] API Gateway: resposta recebida do orquestrador.", trace_id
+                    )
                     return ChatResponse(
                         trace_id=trace_id,
                         response=reply_event.payload.get("response", ""),
                         tier_used=reply_event.payload.get("tier_used", "unknown"),
-                        primary_intent=reply_event.payload.get("primary_intent", "unknown"),
+                        primary_intent=reply_event.payload.get(
+                            "primary_intent", "unknown"
+                        ),
                     )
 
-    logger.error("[%s] API Gateway: timeout aguardando resposta do orquestrador.", trace_id)
+    logger.error(
+        "[%s] API Gateway: timeout aguardando resposta do orquestrador.", trace_id
+    )
     return ChatResponse(
         trace_id=trace_id,
         response=(

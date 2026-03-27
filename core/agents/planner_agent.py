@@ -96,7 +96,10 @@ class PlannerAgent:
                 tier="T3",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Solicitacao do Usuario: {user_prompt}"},
+                    {
+                        "role": "user",
+                        "content": f"Solicitacao do Usuario: {user_prompt}",
+                    },
                 ],
             )
 

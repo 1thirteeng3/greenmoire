@@ -18,6 +18,7 @@ from core.agents.agent_selector import AgentSelector
 from core.agents.planner_agent import PlannerAgent
 from core.agents.executor_agent import ExecutorAgent
 from core.agents.auditor_agent import AuditorAgent
+from core.agents.meta_agent import MetaAgent
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,15 @@ class OrchestratorWorker(BaseEventWorker):
         planner_agent: PlannerAgent,
         executor_agent: ExecutorAgent,
         auditor_agent: AuditorAgent,
+        meta_agent: MetaAgent,
     ):
-        super().__init__(bus, session_factory, "stream:user_input", "orchestrator_group", "orchestrator_1")
+        super().__init__(
+            bus,
+            session_factory,
+            "stream:user_input",
+            "orchestrator_group",
+            "orchestrator_1",
+        )
         self.classifier = intent_classifier
         self.router = model_router
         self.builder = context_builder
@@ -52,6 +60,7 @@ class OrchestratorWorker(BaseEventWorker):
         self.planner = planner_agent
         self.executor = executor_agent
         self.auditor = auditor_agent
+        self.meta_agent = meta_agent
 
     async def start_service(self):
         logger.info("OrchestratorWorker (Maestro da Triade) Iniciado.")
@@ -64,7 +73,7 @@ class OrchestratorWorker(BaseEventWorker):
     async def _process_cognitive_cycle(self, event: BaseEvent, session: AsyncSession):
         user_prompt = event.payload.get("prompt")
         trace_id = event.header.trace_id
-        reply_stream = event.metadata.get("reply_to_stream", "stream:frontend_output")
+        reply_stream = (event.metadata or {}).get("reply_to_stream", "stream:frontend_output")
 
         if not user_prompt:
             raise ValueError("O payload do evento nao contem um 'prompt' valido.")
@@ -85,80 +94,109 @@ class OrchestratorWorker(BaseEventWorker):
         # ROTA RAPIDA (T1 / T2)
         # ==========================================
         if intent.tier in ["T1", "T2"]:
-            logger.info("[%s] Rota Direta (%s). Execucao single-shot.", trace_id, intent.tier)
-            messages = self.builder.build_messages(user_prompt, rag_context, conflict_report)
+            logger.info(
+                "[%s] Rota Direta (%s). Execucao single-shot.", trace_id, intent.tier
+            )
+            messages = self.builder.build_messages(
+                user_prompt, rag_context, conflict_report
+            )
             response_text = await self.router.execute_tier(intent.tier, messages)
 
         # ==========================================
         # ROTA COMPLEXA: A TRIADE (T3)
         # ==========================================
         else:
-            logger.info("[%s] Rota Complexa (T3). Iniciando Triade de Agentes.", trace_id)
+            logger.info(
+                "[%s] Rota Complexa (T3). Iniciando Triade de Agentes.", trace_id
+            )
 
             # A) Seleção de persona
             agent_profile = await self.selector.select_agent(intent.primary_intent)
 
-            # B) Planejamento
-            plan = await self.planner.generate_plan(
-                user_prompt,
-                rag_context or "",
-                agent_profile.allowed_tools,
-                agent_profile.role_description,
-            )
-
-            # C) Execucao + Auditoria + Recuperacao (max 2 tentativas)
-            max_retries = 2
-            attempt = 0
-            approved = False
-            last_critique = None
-            final_output = ""
-
-            while attempt < max_retries and not approved:
-                attempt += 1
-                logger.info("[%s] T3 Execucao - Tentativa %s/%s", trace_id, attempt, max_retries)
-
-                # O executor faz o trabalho
-                final_output = await self.executor.execute_plan(
-                    user_prompt=user_prompt,
-                    plan=plan,
-                    agent_profile=agent_profile,
-                    rag_context=rag_context,
-                    correction_directive=last_critique,
-                )
-
-                # O auditor valida o trabalho, impondo modelo cruzado.
-                audit_report = await self.auditor.audit_execution(
-                    original_prompt=user_prompt,
-                    executor_output=final_output,
-                    executor_tier="T3",
-                )
-
-                if audit_report.approved:
-                    logger.info("[%s] Saida APROVADA pelo Auditor.", trace_id)
-                    approved = True
-                else:
-                    logger.warning("[%s] Saida REPROVADA. Motivo: %s", trace_id, audit_report.critique)
-                    last_critique = audit_report.critique
-
-            # D) Protocolo de alucinacao: Dual Output View
-            if not approved:
-                logger.error(
-                    "[%s] Recuperacao falhou apos %s tentativas. Gerando Dual Output View.",
+            # ── ROTA ESPECIAL: MetaAgent (auto-melhoria) ─────────────────
+            # Bypassa a Triade normal. O SandboxManager é o próprio guardião.
+            if agent_profile.name == "MetaAgent":
+                logger.warning(
+                    "[%s] MetaAgent detectado. Activando pipeline de auto-melhoria.",
                     trace_id,
-                    max_retries,
                 )
-                response_text = (
-                    "**ALERTA DE AUDITORIA COGNITIVA**\n"
-                    "O sistema detectou uma potencial alucinacao ou falha de conformidade que nao pode ser auto-corrigida.\n\n"
-                    "--- **SAIDA GERADA (NAO CONFIAVEL)** ---\n"
-                    f"{final_output}\n\n"
-                    "--- **RELATORIO DO AUDITOR** ---\n"
-                    f"{last_critique}\n"
-                    "----------------------------------------\n"
-                    "*Acao Recomendada: Refine o prompt ou execute as etapas manualmente.*"
+                response_text = await self.meta_agent.self_improve(
+                    target_file=self._extract_target_file(user_prompt),
+                    objective=user_prompt,
                 )
+
+            # ── ROTA NORMAL: Triade Completa ──────────────────────────────
             else:
-                response_text = final_output
+                # B) Planejamento
+                plan = await self.planner.generate_plan(
+                    user_prompt,
+                    rag_context or "",
+                    agent_profile.allowed_tools,
+                    agent_profile.role_description,
+                )
+
+                # C) Execucao + Auditoria + Recuperacao (max 2 tentativas)
+                max_retries = 2
+                attempt = 0
+                approved = False
+                last_critique = None
+                final_output = ""
+
+                while attempt < max_retries and not approved:
+                    attempt += 1
+                    logger.info(
+                        "[%s] T3 Execucao - Tentativa %s/%s",
+                        trace_id,
+                        attempt,
+                        max_retries,
+                    )
+
+                    # O executor faz o trabalho
+                    final_output = await self.executor.execute_plan(
+                        user_prompt=user_prompt,
+                        plan=plan,
+                        agent_profile=agent_profile,
+                        rag_context=rag_context,
+                        correction_directive=last_critique,
+                    )
+
+                    # O auditor valida o trabalho, impondo modelo cruzado.
+                    audit_report = await self.auditor.audit_execution(
+                        original_prompt=user_prompt,
+                        executor_output=final_output,
+                        executor_tier="T3",
+                    )
+
+                    if audit_report.approved:
+                        logger.info("[%s] Saida APROVADA pelo Auditor.", trace_id)
+                        approved = True
+                    else:
+                        logger.warning(
+                            "[%s] Saida REPROVADA. Motivo: %s",
+                            trace_id,
+                            audit_report.critique,
+                        )
+                        last_critique = audit_report.critique
+
+                # D) Protocolo de alucinacao: Dual Output View
+                if not approved:
+                    logger.error(
+                        "[%s] Recuperacao falhou apos %s tentativas. Gerando Dual Output View.",
+                        trace_id,
+                        max_retries,
+                    )
+                    response_text = (
+                        "**ALERTA DE AUDITORIA COGNITIVA**\n"
+                        "O sistema detectou uma potencial alucinacao ou falha de conformidade que nao pode ser auto-corrigida.\n\n"
+                        "--- **SAIDA GERADA (NAO CONFIAVEL)** ---\n"
+                        f"{final_output}\n\n"
+                        "--- **RELATORIO DO AUDITOR** ---\n"
+                        f"{last_critique}\n"
+                        "----------------------------------------\n"
+                        "*Acao Recomendada: Refine o prompt ou execute as etapas manualmente.*"
+                    )
+                else:
+                    response_text = final_output
 
         # 3. Entrega da resposta
         reply_event = BaseEvent(
@@ -175,6 +213,24 @@ class OrchestratorWorker(BaseEventWorker):
         )
         await self.bus.publish(reply_stream, reply_event)
 
+    def _extract_target_file(self, prompt: str) -> str:
+        """
+        Heurística simples para extrair o caminho de um ficheiro Python do prompt do utilizador.
+        Procura padrões como 'core/...py' ou 'no ficheiro X.py'.
+        Se não encontrar, devolve o ficheiro de segurança por defeito.
+        """
+        import re
+
+        # Procura caminhos Python explícitos no prompt (ex: core/api/security.py)
+        match = re.search(r"(core[\\/][\w/\\.-]+\.py)", prompt, re.IGNORECASE)
+        if match:
+            return match.group(1).replace("\\", "/")
+        # Fallback conservador: ficheiro de segurança (pequeno, seguro para demonstração)
+        logger.info(
+            "_extract_target_file: nenhum caminho explícito encontrado. Usando fallback."
+        )
+        return "core/api/security.py"
+
     async def _fetch_memories(
         self,
         prompt: str,
@@ -189,7 +245,11 @@ class OrchestratorWorker(BaseEventWorker):
         embedding = await self.embedding_provider.generate_embedding(prompt)
 
         memories = await repository.search_semantic_memory(embedding, limit=5)
-        rag_context = "\n".join([f"- {memory.content}" for memory, _ in memories]) if memories else None
+        rag_context = (
+            "\n".join([f"- {memory.content}" for memory, _ in memories])
+            if memories
+            else None
+        )
 
         conflict = await self.conflict_resolver.evaluate_proposal(prompt, session)
         return rag_context, conflict

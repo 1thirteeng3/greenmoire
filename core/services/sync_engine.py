@@ -4,7 +4,6 @@ import logging
 import asyncio
 import yaml
 from pathlib import Path
-from datetime import timezone
 from typing import Dict, Any, Optional
 
 from sqlalchemy import select
@@ -40,7 +39,9 @@ class SyncEngineWorker(BaseEventWorker):
         self.vault_path.mkdir(parents=True, exist_ok=True)
 
     async def start_service(self):
-        logger.info(f"Inicializando SyncEngine Daemon apontado para o cofre: {self.vault_path}")
+        logger.info(
+            f"Inicializando SyncEngine Daemon apontado para o cofre: {self.vault_path}"
+        )
         await self.start(self.handle_event)
 
     async def handle_event(self, event: BaseEvent, session: AsyncSession):
@@ -68,10 +69,14 @@ class SyncEngineWorker(BaseEventWorker):
         memory = memory_result.scalar_one_or_none()
 
         if not memory:
-            logger.error(f"Memória {memory_id} não encontrada no banco. Abortando sync.")
+            logger.error(
+                f"Memória {memory_id} não encontrada no banco. Abortando sync."
+            )
             return
 
-        sync_stmt = select(ObsidianSyncState).where(ObsidianSyncState.semantic_memory_id == memory_id)
+        sync_stmt = select(ObsidianSyncState).where(
+            ObsidianSyncState.semantic_memory_id == memory_id
+        )
         sync_result = await session.execute(sync_stmt)
         sync_state = sync_result.scalar_one_or_none()
 
@@ -83,9 +88,17 @@ class SyncEngineWorker(BaseEventWorker):
         if not sync_state:
             await self._create_new_file(memory, markdown_content, new_hash, session)
         else:
-            await self._update_existing_file(sync_state, memory, markdown_content, new_hash, trace_id, session)
+            await self._update_existing_file(
+                sync_state, memory, markdown_content, new_hash, trace_id, session
+            )
 
-    async def _create_new_file(self, memory: SemanticMemory, content: str, content_hash: str, session: AsyncSession):
+    async def _create_new_file(
+        self,
+        memory: SemanticMemory,
+        content: str,
+        content_hash: str,
+        session: AsyncSession,
+    ):
         """Cria um novo ficheiro Markdown no cofre e regista o estado inicial."""
         # Sanitização simples para o nome do ficheiro (Domínio + ID parcial)
         file_name = f"{memory.domain}_{str(memory.id)[:8]}.md".replace(" ", "_")
@@ -116,21 +129,29 @@ class SyncEngineWorker(BaseEventWorker):
     ):
         """Aplica o protocolo rigoroso de Write Lock e SHA-256."""
         if sync_state.is_locked:
-            logger.warning(f"Ficheiro {sync_state.file_path} está bloqueado. Sync abortado.")
+            logger.warning(
+                f"Ficheiro {sync_state.file_path} está bloqueado. Sync abortado."
+            )
             return
 
         target_path = Path(sync_state.file_path)
 
         # Mecanismo de Auto-Cura (Self-Healing)
         if not target_path.exists():
-            logger.info(f"Ficheiro {target_path} não encontrado. Iniciando varredura de cura (Self-Healing)...")
+            logger.info(
+                f"Ficheiro {target_path} não encontrado. Iniciando varredura de cura (Self-Healing)..."
+            )
             found_path = await self._scan_for_grimoire_id(str(memory.id))
             if found_path:
-                logger.info(f"Ficheiro reencontrado em: {found_path}. Atualizando path no banco.")
+                logger.info(
+                    f"Ficheiro reencontrado em: {found_path}. Atualizando path no banco."
+                )
                 sync_state.file_path = str(found_path)
                 target_path = found_path
             else:
-                logger.warning("Ficheiro deletado pelo utilizador. Recriando no local original.")
+                logger.warning(
+                    "Ficheiro deletado pelo utilizador. Recriando no local original."
+                )
 
         # Se o ficheiro existe, verificar edição manual (SHA-256)
         if target_path.exists():
@@ -139,7 +160,9 @@ class SyncEngineWorker(BaseEventWorker):
 
             if disk_hash != sync_state.last_sync_hash:
                 # O protocolo de Soberania Cognitiva foi acionado
-                await self._handle_conflict(sync_state, target_path, new_content, trace_id)
+                await self._handle_conflict(
+                    sync_state, target_path, new_content, trace_id
+                )
                 return
 
         # Caminho Feliz: Ficheiro intacto, sobrescrever com novos dados do banco
@@ -147,15 +170,25 @@ class SyncEngineWorker(BaseEventWorker):
         sync_state.last_sync_hash = new_hash
         logger.debug(f"Ficheiro atualizado com sucesso: {target_path}")
 
-    async def _handle_conflict(self, sync_state: ObsidianSyncState, original_path: Path, new_content: str, trace_id: str):
+    async def _handle_conflict(
+        self,
+        sync_state: ObsidianSyncState,
+        original_path: Path,
+        new_content: str,
+        trace_id: str,
+    ):
         """Gera nota de bifurcação, tranca a tabela e notifica o barramento."""
-        logger.warning(f"CONFLITO DETETADO no ficheiro: {original_path}. Edição manual humana sobrepôs-se ao sistema.")
+        logger.warning(
+            f"CONFLITO DETETADO no ficheiro: {original_path}. Edição manual humana sobrepôs-se ao sistema."
+        )
 
         # 1. Trancar o estado de sincronização
         sync_state.is_locked = True
 
         # 2. Criar a nota de bifurcação
-        conflict_file_path = original_path.with_name(f"{original_path.stem}_(Grimoire_Update){original_path.suffix}")
+        conflict_file_path = original_path.with_name(
+            f"{original_path.stem}_(Grimoire_Update){original_path.suffix}"
+        )
         await self._write_file(conflict_file_path, new_content)
 
         # 3. Emitir evento de conflito para a UI e resolução futura
@@ -235,10 +268,14 @@ class SyncEngineWorker(BaseEventWorker):
 
         return await asyncio.to_thread(scan)
 
-    async def _process_error_audit_sync(self, payload: Dict[str, Any], session: AsyncSession):
+    async def _process_error_audit_sync(
+        self, payload: Dict[str, Any], session: AsyncSession
+    ):
         """Mantém um log de auditoria física contínuo no Obsidian."""
         _ = session  # reservado para futura consistência transacional com estado relacional
-        audit_file_path = self.vault_path / "System_Meta" / "Grimoire_Auditoria_Cognitiva.md"
+        audit_file_path = (
+            self.vault_path / "System_Meta" / "Grimoire_Auditoria_Cognitiva.md"
+        )
         audit_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         error_id = payload.get("error_id")

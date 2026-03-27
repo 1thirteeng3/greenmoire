@@ -5,7 +5,6 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from core.infrastructure.persistence.base import Base
 from core.infrastructure.persistence.settings import build_sqlalchemy_url

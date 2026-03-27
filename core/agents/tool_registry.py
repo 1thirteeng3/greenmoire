@@ -82,8 +82,14 @@ class ToolRegistry:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "filename": {"type": "string", "description": "Nome do arquivo (ex: 'Plano_Marketing.md')"},
-                            "content": {"type": "string", "description": "Conteudo em Markdown"},
+                            "filename": {
+                                "type": "string",
+                                "description": "Nome do arquivo (ex: 'Plano_Marketing.md')",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Conteudo em Markdown",
+                            },
                             "mode": {
                                 "type": "string",
                                 "enum": ["inbox", "append", "overwrite"],
@@ -153,30 +159,59 @@ class ToolRegistry:
             "esta operante. Conecte o endpoint de search na integracao."
         )
 
-    def _sanitize_path(self, filename: str) -> str:
-        """Prevencao contra path traversal (ex: '../../etc/passwd')."""
-        clean_name = os.path.basename(filename)
-        if not clean_name.endswith(".md"):
-            clean_name += ".md"
-        return clean_name
+    def _sanitize_path(self, filename: str) -> Path:
+        """
+        Proteção Absoluta contra Path Traversal (CWE-22).
+        Garante matematicamente que o LLM não consegue aceder a /etc/passwd ou ficheiros
+        fora da pasta do Vault usando '../' ou caminhos absolutos forçados.
+        """
+        # Resolve o caminho do cofre para o caminho absoluto do Sistema Operativo
+        absolute_vault = self.vault_path.resolve()
 
-    async def tool_write_obsidian_note(self, filename: str, content: str, mode: str = "inbox") -> str:
+        # Junta o nome pedido pelo LLM e resolve (colapsa quaisquer ../ , symlinks, etc.)
+        requested_path = (absolute_vault / filename).resolve()
+
+        # A Mágica de Segurança: verifica se o caminho final CONTINUA dentro do cofre
+        try:
+            requested_path.relative_to(absolute_vault)
+        except ValueError:
+            logger.critical(
+                "VIOLAÇÃO DE SEGURANÇA INTERCEPTADA: Tentativa de fuga do cofre para %s",
+                requested_path,
+            )
+            raise PermissionError(
+                f"Acesso negado. O ficheiro '{filename}' está fora da jurisdição do Grimoire "
+                f"(resolvido como {requested_path})."
+            )
+
+        # Garante extensão .md
+        if not requested_path.name.endswith(".md"):
+            requested_path = requested_path.with_suffix(".md")
+
+        return requested_path
+
+    async def tool_write_obsidian_note(
+        self, filename: str, content: str, mode: str = "inbox"
+    ) -> str:
         """
         Manipula ficheiros físicos com base no modo de segurança.
         Aplica a política Fail-Safe: qualquer anomalia força o modo 'inbox'.
         """
-        clean_name = self._sanitize_path(filename)
+        try:
+            safe_path = self._sanitize_path(filename)
+        except PermissionError as e:
+            return json.dumps({"status": "error", "message": str(e)})
 
         valid_modes = ["inbox", "append", "overwrite"]
         safe_mode = mode.lower() if mode and mode.lower() in valid_modes else "inbox"
 
         if safe_mode == "inbox":
-            target_path = self.inbox_path / clean_name
+            target_path = self.inbox_path / safe_path.name
 
             # Evita colisão de nomes na inbox criando versões incrementais
             counter = 1
             while target_path.exists():
-                target_path = self.inbox_path / f"{clean_name.replace('.md', '')}_v{counter}.md"
+                target_path = self.inbox_path / f"{safe_path.stem}_v{counter}.md"
                 counter += 1
 
             async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
@@ -184,35 +219,41 @@ class ToolRegistry:
             return f"Sucesso (Fail-Safe Ativo): Nota salva com segurança na Quarentena/Inbox: {target_path.name}"
 
         if safe_mode == "append":
-            target_path = self.vault_path / clean_name
+            target_path = self.vault_path / safe_path.name
             if not target_path.exists():
                 # Auto-correção: se append falhar por arquivo inexistente, desvia para inbox.
-                return await self.tool_write_obsidian_note(filename, content, mode="inbox")
+                return await self.tool_write_obsidian_note(
+                    filename, content, mode="inbox"
+                )
 
             async with aiofiles.open(target_path, "a", encoding="utf-8") as f:
                 await f.write(f"\n\n---\n*Adicionado por Grimoire:*\n{content}")
-            return f"Sucesso: Conteúdo adicionado ao final do arquivo {clean_name}"
+            return f"Sucesso: Conteúdo adicionado ao final do arquivo {safe_path.name}"
 
         if safe_mode == "overwrite":
-            target_path = self.vault_path / clean_name
+            target_path = self.vault_path / safe_path.name
             async with aiofiles.open(target_path, "w", encoding="utf-8") as f:
                 await f.write(content)
-            return f"AVISO DE GOVERNANÇA: Nota original {clean_name} foi totalmente sobrescrita."
+            return f"AVISO DE GOVERNANÇA: Nota original {safe_path.name} foi totalmente sobrescrita."
 
         # Guard clause adicional (na prática não alcançável após safe_mode)
         return await self.tool_write_obsidian_note(filename, content, mode="inbox")
 
     async def tool_delete_obsidian_note(self, filename: str) -> str:
         """Apaga nota (uso recomendado para governanca)."""
-        clean_name = self._sanitize_path(filename)
-        target_path = self.vault_path / clean_name
+        try:
+            safe_path = self._sanitize_path(filename)
+        except PermissionError as e:
+            return json.dumps({"status": "error", "message": str(e)})
+
+        target_path = self.vault_path / safe_path.name
         if not target_path.exists():
-            target_path = self.inbox_path / clean_name
+            target_path = self.inbox_path / safe_path.name
 
         if target_path.exists():
             os.remove(target_path)
-            return f"Governanca: Nota {clean_name} deletada permanentemente."
-        return f"Erro: Nota {clean_name} nao encontrada para exclusao."
+            return f"Governanca: Nota {safe_path.name} deletada permanentemente."
+        return f"Erro: Nota {safe_path.name} nao encontrada para exclusao."
 
     async def tool_get_current_time(self) -> str:
         """

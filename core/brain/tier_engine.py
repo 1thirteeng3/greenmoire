@@ -23,14 +23,14 @@ class TierEngine:
     """
 
     def __init__(self):
-        self.t1_provider = os.getenv("ROUTER_T1_PROVIDER", "localai")
-        self.t1_model = os.getenv("ROUTER_T1_MODEL", "llama-3-8b-instruct")
+        self.t1_provider = os.getenv("ROUTER_T1_PROVIDER", "openai")
+        self.t1_model = os.getenv("ROUTER_T1_MODEL", "deepseek-chat")
 
         self.t2_provider = os.getenv("ROUTER_T2_PROVIDER", "openai")
-        self.t2_model = os.getenv("ROUTER_T2_MODEL", "gpt-4o-mini")
+        self.t2_model = os.getenv("ROUTER_T2_MODEL", "deepseek-chat")
 
-        self.t3_provider = os.getenv("ROUTER_T3_PROVIDER", "anthropic")
-        self.t3_model = os.getenv("ROUTER_T3_MODEL", "claude-3-5-sonnet-latest")
+        self.t3_provider = os.getenv("ROUTER_T3_PROVIDER", "openai")
+        self.t3_model = os.getenv("ROUTER_T3_MODEL", "deepseek-coder")
 
     def get_policy(self, tier: str) -> TierPolicy:
         """Retorna politica estrita de execucao para a camada solicitada."""

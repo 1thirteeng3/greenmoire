@@ -57,9 +57,7 @@ class ContextBuilder:
         if agent_role:
             logger.debug("Injetando persona do agente especializado no system prompt.")
             system_content.append(
-                "\n<PERFIL_DE_EXECUCAO>\n"
-                f"{agent_role}\n"
-                "</PERFIL_DE_EXECUCAO>"
+                f"\n<PERFIL_DE_EXECUCAO>\n{agent_role}\n</PERFIL_DE_EXECUCAO>"
             )
 
         final_system_message = "\n".join(system_content)

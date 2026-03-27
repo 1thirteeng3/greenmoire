@@ -37,7 +37,9 @@ class OpenDataLoaderProvider:
 
                 async with session.post(endpoint, data=data) as response:
                     if response.status != 200:
-                        raise RuntimeError(f"Erro OpenDataLoader: {await response.text()}")
+                        raise RuntimeError(
+                            f"Erro OpenDataLoader: {await response.text()}"
+                        )
 
                     result = await response.json()
                     markdown_content = result.get("markdown", "")

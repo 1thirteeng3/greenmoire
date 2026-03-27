@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     """Calculo ultrarrapido de similaridade sem dependencia de numpy."""
     dot_product = sum(a * b for a, b in zip(vec1, vec2))
-    magnitude = math.sqrt(sum(a * a for a in vec1)) * math.sqrt(sum(b * b for b in vec2))
+    magnitude = math.sqrt(sum(a * a for a in vec1)) * math.sqrt(
+        sum(b * b for b in vec2)
+    )
     return dot_product / magnitude if magnitude != 0 else 0.0
 
 
@@ -81,12 +83,35 @@ class AgentSelector:
                         "Voce e o Zelador do Cofre (Zettelkasten). Sua funcao e podar o jardim "
                         "cognitivo, apagando notas duplicadas, obsoletas ou reestruturando informacoes antigas."
                     ),
-                    allowed_tools=["delete_obsidian_note", "write_obsidian_note", "get_current_time"],
+                    allowed_tools=[
+                        "delete_obsidian_note",
+                        "write_obsidian_note",
+                        "get_current_time",
+                    ],
                     max_loops=4,
                 ),
                 "semantic_anchor": (
                     "apagar arquivo antigo, deletar nota obsoleta, limpar cofre, remover anotacao "
                     "duplicada, podar jardim digital, excluir arquivo markdown inutil."
+                ),
+            },
+            "meta_agent": {
+                "profile": AgentProfile(
+                    name="MetaAgent",
+                    role_description=(
+                        "Voce e o Meta-Agente do Grimoire OS, o Engenheiro Cibernetico. "
+                        "Sua funcao exclusiva e realizar auto-melhoria controlada: ler o codigo-fonte "
+                        "do proprio sistema, propor reescritas e submete-las ao pipeline de quarentena "
+                        "e testes antes de qualquer alteracao fisica. "
+                        "NUNCA modifique ficheiros fora da pasta core/."
+                    ),
+                    allowed_tools=[],
+                    max_loops=1,
+                ),
+                "semantic_anchor": (
+                    "melhorar o codigo, refatorar sistema, auto-melhorar, reescrever modulo, "
+                    "evoluir arquitetura, modificar codigo fonte, adicionar comentario no codigo, "
+                    "otimizar implementacao, corrigir bug no sistema, editar ficheiro python do grimoire."
                 ),
             },
         }
@@ -97,7 +122,9 @@ class AgentSelector:
         if not self._anchor_embeddings:
             logger.info("Agent Selector: Vetorizando ancoras semanticas de agentes...")
             for key, data in self.agents.items():
-                emb = await self.embedding_provider.generate_embedding(data["semantic_anchor"])
+                emb = await self.embedding_provider.generate_embedding(
+                    data["semantic_anchor"]
+                )
                 self._anchor_embeddings[key] = emb
 
     async def select_agent(self, primary_intent: str) -> AgentProfile:
@@ -105,7 +132,9 @@ class AgentSelector:
         Calcula embedding da intencao e devolve o agente com maior similaridade de cosseno.
         """
         await self._ensure_embeddings_loaded()
-        intent_embedding = await self.embedding_provider.generate_embedding(primary_intent)
+        intent_embedding = await self.embedding_provider.generate_embedding(
+            primary_intent
+        )
 
         best_score = -1.0
         selected_agent_key = "writer"  # Fallback conservador

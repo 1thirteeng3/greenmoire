@@ -31,7 +31,9 @@ class IngestionTask(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     trace_id: str
     source_type: IngestionSourceType
-    source_uri: str = Field(description="URL, caminho local ou identificador lógico da origem.")
+    source_uri: str = Field(
+        description="URL, caminho local ou identificador lógico da origem."
+    )
     status: IngestionTaskStatus = Field(default=IngestionTaskStatus.PENDING)
     retry_count: int = Field(default=0, ge=0)
     last_error: Optional[str] = Field(default=None)
@@ -79,7 +81,9 @@ class ChunkedContent(BaseModel):
 
 class VectorizedChunk(BaseModel):
     chunk_id: str
-    embedding_ref_id: str = Field(description="Referência para o vetor persistido no banco vetorial/pgvector.")
+    embedding_ref_id: str = Field(
+        description="Referência para o vetor persistido no banco vetorial/pgvector."
+    )
     dimension: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")

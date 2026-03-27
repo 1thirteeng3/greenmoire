@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.api.routes import chat, stream
+from core.api.routes import chat, stream, governance
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +26,10 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Cognitive Operations"])
-app.include_router(stream.router, prefix="/api/v1/stream", tags=["Cognitive Operations"])
+app.include_router(
+    stream.router, prefix="/api/v1/stream", tags=["Cognitive Operations"]
+)
+app.include_router(governance.router, prefix="/api/v1/governance", tags=["Governance"])
 
 
 @app.get("/health", tags=["System"])

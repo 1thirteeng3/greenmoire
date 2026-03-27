@@ -1,88 +1,101 @@
-import React, { useState } from 'react';
-import { UiProvider } from './contexts/UiContext';
-import { TopBar } from './components/TopBar';
-import { CognitiveMessage } from './components/CognitiveMessage';
-import { useGrimoireStream } from './hooks/useGrimoireStream';
+import React from 'react';
+import { useUi } from './contexts/UiContext';
+import { useCognitiveStream } from './hooks/useCognitiveStream';
 
-function App() {
-  const { messages, sendMessage, isProcessing, statusText, isConnected } = useGrimoireStream();
-  const [inputValue, setInputValue] = useState('');
+// Layout
+import { Header } from './components/layout/Header';
 
-  const handleSend = () => {
-    if (inputValue.trim() && !isProcessing) {
-      sendMessage(inputValue);
-      setInputValue('');
-    }
-  };
+// Transparency (Advanced mode)
+import { LiveTracePanel } from './components/transparency/LiveTracePanel';
+import { ExecutionPlanVisualizer } from './components/transparency/ExecutionPlan';
+import { IterationHistory } from './components/transparency/IterationHistory';
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSend();
-    }
-  };
+// Shared
+import { CognitiveCycleIndicator } from './components/shared/CognitiveCycleIndicator';
+import { ChatInput } from './components/chat/ChatInput';
+
+const TRACE_PANEL_WIDTH = 300;
+
+const App: React.FC = () => {
+  const { isAdvanced } = useUi();
+  const {
+    connectionStatus,
+    sessionId,
+    messages,
+    session,
+    sendPrompt,
+    clearHistory,
+  } = useCognitiveStream();
+
+  const isProcessing =
+    session.status !== 'idle' &&
+    session.status !== 'completed' &&
+    session.status !== 'error';
 
   return (
-    <UiProvider>
-      <div className="flex flex-col h-screen">
-        <TopBar />
-        
-        <main className="flex-1 overflow-y-auto w-full">
-          <div className="max-w-4xl mx-auto px-6 py-8 pb-32">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center mt-20 opacity-50">
-                <div className="w-16 h-16 rounded mb-4 bg-gradient-to-br from-cognitive-t1 to-cognitive-t2 flex items-center justify-center font-bold text-white text-2xl">
-                  G
-                </div>
-                <h2 className="text-xl font-semibold text-white mb-2">Bem-vindo ao Grimoire OS</h2>
-                <p className="text-sm font-mono">Conectado. Aguardando input cognitivo...</p>
-              </div>
-            ) : (
-              messages.map((msg, index) => (
-                <CognitiveMessage key={index} message={msg} />
-              ))
-            )}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        overflow: 'hidden',
+        background: 'var(--color-vault-900)',
+      }}
+    >
+      {/* ── Top Navigation ── */}
+      <Header
+        connectionStatus={connectionStatus}
+        sessionId={sessionId}
+        onClearHistory={clearHistory}
+      />
 
-            {isProcessing && (
-              <div className="flex justify-start mb-6">
-                <div className="max-w-3xl flex items-center gap-3 text-sm font-mono text-cognitive-t1 animate-pulse px-6 py-4">
-                  <span className="w-2 h-2 bg-cognitive-t1 rounded-full inline-block"></span>
-                  {statusText || 'Processando...'}
-                </div>
-              </div>
-            )}
+      {/* ── Main workspace ── */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* ── Center: Chat + Plan ── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* Cognitive cycle breadcrumb */}
+          <CognitiveCycleIndicator session={session} />
+
+          {/* Execution plan (T3 only, visible in both modes when active) */}
+          {session.planSteps.length > 0 && (
+            <div style={{ overflowY: 'auto', maxHeight: '280px', flexShrink: 0 }}>
+              <ExecutionPlanVisualizer session={session} />
+            </div>
+          )}
+
+          {/* ── Message history ── */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <IterationHistory messages={messages} isProcessing={isProcessing} />
           </div>
-        </main>
-        
-        <footer className="fixed bottom-0 w-full bg-vault-900 border-t border-vault-700/50 p-4">
-          <div className="max-w-4xl mx-auto relative">
-            {!isConnected && (
-              <div className="absolute -top-10 left-0 w-full text-center">
-                <span className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full">
-                  ⚠️ Cérebro Offline (FastAPI não está a correr no porto 8000)
-                </span>
-              </div>
-            )}
-            <input 
-              type="text" 
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isConnected ? "Pergunte ao Grimoire..." : "Conexão de rede indisponível..."}
-              className="w-full bg-vault-800 border border-vault-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-cognitive-t1 transition-colors disabled:opacity-50"
-              disabled={isProcessing || !isConnected}
-            />
-            <button 
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isProcessing || !isConnected}
-              className="absolute right-2 top-1.5 p-1.5 bg-vault-700 text-gray-400 rounded-md hover:text-white hover:bg-vault-600 transition-colors disabled:opacity-50"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-            </button>
+
+          {/* ── Input bar ── */}
+          <ChatInput
+            onSend={sendPrompt}
+            status={session.status}
+            disabled={connectionStatus !== 'connected'}
+          />
+        </div>
+
+        {/* ── Right: Live Trace Panel (Advanced mode only) ── */}
+        {isAdvanced && (
+          <div
+            className="animate-fade-in-up"
+            style={{
+              width: `${TRACE_PANEL_WIDTH}px`,
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <LiveTracePanel session={session} />
           </div>
-        </footer>
+        )}
       </div>
-    </UiProvider>
+    </div>
   );
-}
+};
 
 export default App;

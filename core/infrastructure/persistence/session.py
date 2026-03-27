@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from core.infrastructure.persistence.settings import DatabaseSettings, load_database_settings
+from core.infrastructure.persistence.settings import (
+    DatabaseSettings,
+    load_database_settings,
+)
 
 
 def create_engine(settings: DatabaseSettings | None = None) -> AsyncEngine:
@@ -21,9 +24,13 @@ def create_engine(settings: DatabaseSettings | None = None) -> AsyncEngine:
     )
 
 
-def create_session_factory(engine: AsyncEngine | None = None) -> async_sessionmaker[AsyncSession]:
+def create_session_factory(
+    engine: AsyncEngine | None = None,
+) -> async_sessionmaker[AsyncSession]:
     async_engine = engine or create_engine()
-    return async_sessionmaker(bind=async_engine, expire_on_commit=False, class_=AsyncSession)
+    return async_sessionmaker(
+        bind=async_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
 
 @asynccontextmanager

@@ -56,7 +56,9 @@ class ExecutorAgent:
 
         # Execucao explicita etapa por etapa.
         for step in plan.steps:
-            unmet_dependencies = [dep for dep in step.dependencies if dep not in workflow_memory]
+            unmet_dependencies = [
+                dep for dep in step.dependencies if dep not in workflow_memory
+            ]
             if unmet_dependencies:
                 step_output = (
                     f"Aviso: Etapa {step.step_id} bloqueada por dependencias nao resolvidas: "
@@ -64,7 +66,9 @@ class ExecutorAgent:
                 )
                 logger.warning("ExecutorAgent: %s", step_output)
                 workflow_memory[step.step_id] = step_output
-                final_aggregated_output.append(f"\n### Etapa {step.step_id}\n{step_output}\n")
+                final_aggregated_output.append(
+                    f"\n### Etapa {step.step_id}\n{step_output}\n"
+                )
                 continue
 
             logger.info(
@@ -85,7 +89,10 @@ class ExecutorAgent:
 
             if workflow_memory:
                 history = "\n".join(
-                    [f"Etapa {step_id}: {result}" for step_id, result in sorted(workflow_memory.items())]
+                    [
+                        f"Etapa {step_id}: {result}"
+                        for step_id, result in sorted(workflow_memory.items())
+                    ]
                 )
                 step_system_content.append(
                     f"\n<HISTORICO_DAS_ETAPAS_ANTERIORES>\n{history}\n</HISTORICO_DAS_ETAPAS_ANTERIORES>"
@@ -137,7 +144,11 @@ class ExecutorAgent:
                 )
 
                 if isinstance(response, str) or not response.get("tool_calls"):
-                    step_output = response if isinstance(response, str) else response.get("content", "")
+                    step_output = (
+                        response
+                        if isinstance(response, str)
+                        else response.get("content", "")
+                    )
                     step_completed = True
                     break
 
@@ -174,7 +185,9 @@ class ExecutorAgent:
                 )
 
             workflow_memory[step.step_id] = step_output
-            final_aggregated_output.append(f"\n### Etapa {step.step_id}\n{step_output}\n")
+            final_aggregated_output.append(
+                f"\n### Etapa {step.step_id}\n{step_output}\n"
+            )
 
         logger.info("ExecutorAgent: DAG processado integralmente.")
         return "".join(final_aggregated_output).strip()

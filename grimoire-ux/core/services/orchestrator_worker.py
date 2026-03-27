@@ -44,7 +44,13 @@ class OrchestratorWorker(BaseEventWorker):
         executor_agent: ExecutorAgent,
         auditor_agent: AuditorAgent,
     ):
-        super().__init__(bus, session_factory, "stream:user_input", "orchestrator_group", "orchestrator_1")
+        super().__init__(
+            bus,
+            session_factory,
+            "stream:user_input",
+            "orchestrator_group",
+            "orchestrator_1",
+        )
         self.classifier = intent_classifier
         self.router = model_router
         self.builder = context_builder
@@ -126,7 +132,9 @@ class OrchestratorWorker(BaseEventWorker):
                 action=f"Rota Direta ({intent.tier}) — Execução single-shot sem agentes.",
                 tier=intent.tier,
             )
-            messages = self.builder.build_messages(user_prompt, rag_context, conflict_report)
+            messages = self.builder.build_messages(
+                user_prompt, rag_context, conflict_report
+            )
             response_text = await self.router.execute_tier(intent.tier, messages)
             await tracer.emit(
                 agent="ModelRouter",
@@ -311,7 +319,11 @@ class OrchestratorWorker(BaseEventWorker):
         embedding = await self.embedding_provider.generate_embedding(prompt)
 
         memories = await repository.search_semantic_memory(embedding, limit=5)
-        rag_context = "\n".join([f"- {memory.content}" for memory, _ in memories]) if memories else None
+        rag_context = (
+            "\n".join([f"- {memory.content}" for memory, _ in memories])
+            if memories
+            else None
+        )
 
         conflict = await self.conflict_resolver.evaluate_proposal(prompt, session)
         return rag_context, conflict

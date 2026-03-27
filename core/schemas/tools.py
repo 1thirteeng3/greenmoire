@@ -34,12 +34,16 @@ class FetchUrlToolInput(BaseToolInput):
 
 class WriteNoteToolInput(BaseToolInput):
     path: str = Field(min_length=1, description="Caminho relativo da nota no cofre.")
-    content: str = Field(min_length=1, description="Conteúdo markdown a ser persistido.")
+    content: str = Field(
+        min_length=1, description="Conteúdo markdown a ser persistido."
+    )
     overwrite: bool = Field(default=False)
 
 
 class UpsertMemoryToolInput(BaseToolInput):
-    memory_id: str | None = Field(default=None, description="ID existente para update; vazio para insert.")
+    memory_id: str | None = Field(
+        default=None, description="ID existente para update; vazio para insert."
+    )
     memory_type: Literal["semantic", "episodic", "error"]
     content: str = Field(min_length=1)
     trace_id: str | None = Field(default=None)

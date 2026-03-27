@@ -16,14 +16,19 @@ class LLMProvider:
     """
 
     def __init__(self):
-        self.openai_client = AsyncOpenAI(api_key=os.getenv("VLM_API_KEY", ""))
+        self.openai_client = AsyncOpenAI(
+            base_url=os.getenv("VLM_BASE_URL", "https://api.openai.com/v1"),
+            api_key=os.getenv("VLM_API_KEY", ""),
+        )
         self.localai_client = AsyncOpenAI(
             base_url=os.getenv("EMBEDDING_API_BASE", "http://localhost:8080/v1"),
             api_key=os.getenv("EMBEDDING_API_KEY", "sk-localai-dummy"),
         )
 
         anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.anthropic_client = AsyncAnthropic(api_key=anthropic_key) if anthropic_key else None
+        self.anthropic_client = (
+            AsyncAnthropic(api_key=anthropic_key) if anthropic_key else None
+        )
 
     async def generate_completion(
         self,
@@ -59,7 +64,9 @@ class LLMProvider:
             if provider == "anthropic":
                 if not self.anthropic_client:
                     raise ValueError("Anthropic API Key nao configurada.")
-                return await self._call_anthropic(model, messages, temperature, max_tokens, tools)
+                return await self._call_anthropic(
+                    model, messages, temperature, max_tokens, tools
+                )
             raise ValueError(f"Provedor LLM nao suportado: {provider}")
 
         except Exception as e:
@@ -127,7 +134,9 @@ class LLMProvider:
 
             # Mensagens normais de usuário e assistente
             if role in ["user", "assistant"] and not msg.get("tool_calls"):
-                anthropic_messages.append({"role": role, "content": str(msg.get("content", ""))})
+                anthropic_messages.append(
+                    {"role": role, "content": str(msg.get("content", ""))}
+                )
                 continue
 
             # Assistente solicitou ferramenta (tool_calls)
@@ -139,7 +148,11 @@ class LLMProvider:
                 for tc in msg["tool_calls"]:
                     raw_args = tc["function"].get("arguments", "{}")
                     try:
-                        parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                        parsed_args = (
+                            json.loads(raw_args)
+                            if isinstance(raw_args, str)
+                            else dict(raw_args)
+                        )
                     except Exception:
                         parsed_args = {}
 
@@ -152,7 +165,9 @@ class LLMProvider:
                         }
                     )
 
-                anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                anthropic_messages.append(
+                    {"role": "assistant", "content": content_blocks}
+                )
                 continue
 
             # Resposta de ferramenta (Anthropic exige role=user com bloco tool_result)

@@ -19,9 +19,15 @@ class Base(DeclarativeBase):
 
 class BaseModel(Base):
     __abstract__ = True
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
 
 
@@ -32,7 +38,9 @@ class SemanticMemory(BaseModel):
     __tablename__ = "semantic_memories"
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=True)
+    embedding: Mapped[Optional[Any]] = mapped_column(
+        Vector(EMBEDDING_DIMENSION), nullable=True
+    )
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     human_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -72,7 +80,9 @@ class ErrorMemory(BaseModel):
 
     original_output: Mapped[str] = mapped_column(Text, nullable=False)
     human_correction: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=True)
+    embedding: Mapped[Optional[Any]] = mapped_column(
+        Vector(EMBEDDING_DIMENSION), nullable=True
+    )
     resolved: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     __table_args__ = (
@@ -100,7 +110,9 @@ class ObsidianSyncState(BaseModel):
     last_sync_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    semantic_memory: Mapped["SemanticMemory"] = relationship("SemanticMemory", back_populates="sync_state")
+    semantic_memory: Mapped["SemanticMemory"] = relationship(
+        "SemanticMemory", back_populates="sync_state"
+    )
 
 
 # ==========================================

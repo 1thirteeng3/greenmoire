@@ -2,6 +2,7 @@
 TraceEmitter – Telemetria Cognitiva em Tempo Real
 Publica eventos de rastreamento por-trace no Redis para consumo via WebSocket.
 """
+
 from __future__ import annotations
 
 import time
@@ -55,11 +56,15 @@ class TraceEmitter:
             await self.bus.publish(self.stream_name, event, maxlen=500)
 
             # Configura TTL no stream para evitar acumulação de lixo cognitivo
-            await self.bus.client.expire(self.stream_name, self.TRACE_STREAM_TTL_SECONDS)
+            await self.bus.client.expire(
+                self.stream_name, self.TRACE_STREAM_TTL_SECONDS
+            )
 
         except Exception as exc:
             # TraceEmitter NUNCA deve quebrar o fluxo principal
-            logger.warning("TraceEmitter: Falha ao emitir trace [%s]: %s", self.trace_id, exc)
+            logger.warning(
+                "TraceEmitter: Falha ao emitir trace [%s]: %s", self.trace_id, exc
+            )
 
     async def emit_plan(
         self,
@@ -91,10 +96,14 @@ class TraceEmitter:
                 },
             )
             await self.bus.publish(self.stream_name, event, maxlen=500)
-            await self.bus.client.expire(self.stream_name, self.TRACE_STREAM_TTL_SECONDS)
+            await self.bus.client.expire(
+                self.stream_name, self.TRACE_STREAM_TTL_SECONDS
+            )
 
         except Exception as exc:
-            logger.warning("TraceEmitter: Falha ao emitir plano [%s]: %s", self.trace_id, exc)
+            logger.warning(
+                "TraceEmitter: Falha ao emitir plano [%s]: %s", self.trace_id, exc
+            )
 
     async def emit_step_update(self, step_id: int, status: str) -> None:
         """Atualiza o status de um passo do plano em execução."""
@@ -113,4 +122,6 @@ class TraceEmitter:
             )
             await self.bus.publish(self.stream_name, event, maxlen=500)
         except Exception as exc:
-            logger.warning("TraceEmitter: Falha ao emitir step update [%s]: %s", self.trace_id, exc)
+            logger.warning(
+                "TraceEmitter: Falha ao emitir step update [%s]: %s", self.trace_id, exc
+            )

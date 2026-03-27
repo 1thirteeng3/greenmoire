@@ -33,7 +33,9 @@ class RedisRateLimiter:
     Protege contra exaustao de chamadas e abuso do gateway.
     """
 
-    def __init__(self, redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")):
+    def __init__(
+        self, redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    ):
         self.redis = Redis.from_url(redis_url, decode_responses=True)
 
     async def check_rate_limit(self, request: Request) -> None:

@@ -12,7 +12,9 @@ def current_utc() -> datetime:
 
 
 class MemoryMetadata(BaseModel):
-    source: str = Field(description="Origem da memória (ex: 'user_input', 'rag_ingestion', 'auditor_agent')")
+    source: str = Field(
+        description="Origem da memória (ex: 'user_input', 'rag_ingestion', 'auditor_agent')"
+    )
     confidence_score: float = Field(
         ge=0.0,
         le=1.0,
@@ -45,25 +47,42 @@ class SemanticMemory(BaseMemoryEntity):
     """Fatos consolidados, conhecimento geral e preferências do usuário."""
 
     memory_type: str = Field(default="semantic", frozen=True)
-    domain: str = Field(..., description="Categoria do conhecimento (ex: 'preferences', 'tech_stack', 'project_x').")
-    human_verified: bool = Field(default=False, description="True se o usuário confirmou este fato explicitamente.")
+    domain: str = Field(
+        ...,
+        description="Categoria do conhecimento (ex: 'preferences', 'tech_stack', 'project_x').",
+    )
+    human_verified: bool = Field(
+        default=False,
+        description="True se o usuário confirmou este fato explicitamente.",
+    )
 
 
 class EpisodicMemory(BaseMemoryEntity):
     """Histórico de interações, pensamentos do sistema e eventos."""
 
     memory_type: str = Field(default="episodic", frozen=True)
-    trace_id: str = Field(..., description="Vínculo obrigatório com o fluxo cognitivo que gerou esta memória.")
-    participants: list[str] = Field(description="Ex: ['user', 'executor_agent', 'auditor_agent']")
+    trace_id: str = Field(
+        ...,
+        description="Vínculo obrigatório com o fluxo cognitivo que gerou esta memória.",
+    )
+    participants: list[str] = Field(
+        description="Ex: ['user', 'executor_agent', 'auditor_agent']"
+    )
 
 
 class ErrorMemory(BaseMemoryEntity):
     """Registro de alucinações, falhas de lógica e correções do usuário."""
 
     memory_type: str = Field(default="error", frozen=True)
-    original_output: str = Field(..., description="A saída do sistema que foi classificada como erro.")
-    human_correction: str = Field(..., description="A correção fornecida pelo usuário ou o log de conflito.")
-    resolved: bool = Field(default=False, description="Define se a política de recuperação foi concluída.")
+    original_output: str = Field(
+        ..., description="A saída do sistema que foi classificada como erro."
+    )
+    human_correction: str = Field(
+        ..., description="A correção fornecida pelo usuário ou o log de conflito."
+    )
+    resolved: bool = Field(
+        default=False, description="Define se a política de recuperação foi concluída."
+    )
 
 
 class MemoryEnvelope(BaseModel):

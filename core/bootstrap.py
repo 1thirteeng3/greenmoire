@@ -20,6 +20,10 @@ from core.agents.agent_selector import AgentSelector
 from core.agents.planner_agent import PlannerAgent
 from core.agents.executor_agent import ExecutorAgent
 from core.agents.auditor_agent import AuditorAgent
+from core.agents.meta_agent import MetaAgent
+
+# Infraestrutura de Sandbox (Fase 7)
+from core.infrastructure.sandbox.manager import SandboxManager
 
 # Workers
 from core.services.orchestrator_worker import OrchestratorWorker
@@ -33,7 +37,9 @@ class ApplicationContainer:
     Instancia o grafo de objetos na ordem estrita de dependencia.
     """
 
-    def __init__(self, bus: AsyncRedisEventBus, session_factory: async_sessionmaker[AsyncSession]):
+    def __init__(
+        self, bus: AsyncRedisEventBus, session_factory: async_sessionmaker[AsyncSession]
+    ):
         logger.info("Iniciando Bootstrap da Aplicacao (Dependency Wiring)...")
 
         # Nivel 0: Provedores Externos
@@ -46,7 +52,9 @@ class ApplicationContainer:
         self.model_router = ModelRouter(self.llm_provider, self.tier_engine)
         self.context_builder = ContextBuilder()
         # ConflictResolver agora é agnóstico e usa o ModelRouter.
-        self.conflict_resolver = ConflictResolver(self.embedding_provider, self.model_router)
+        self.conflict_resolver = ConflictResolver(
+            self.embedding_provider, self.model_router
+        )
 
         # Nivel 2: Ferramentas e Agentes
         self.tool_registry = ToolRegistry(self.firecrawl_provider)
@@ -55,6 +63,10 @@ class ApplicationContainer:
         self.planner_agent = PlannerAgent(self.model_router)
         self.executor_agent = ExecutorAgent(self.model_router, self.tool_registry)
         self.auditor_agent = AuditorAgent(self.model_router, self.tier_engine)
+
+        # Nivel 2.5: Sandbox e Auto-Melhoria (Fase 7)
+        self.sandbox_manager = SandboxManager(root_dir=".")
+        self.meta_agent = MetaAgent(self.model_router, self.sandbox_manager)
 
         # Nivel 3: Orquestracao (O Maestro)
         self.orchestrator_worker = OrchestratorWorker(
@@ -69,6 +81,7 @@ class ApplicationContainer:
             planner_agent=self.planner_agent,
             executor_agent=self.executor_agent,
             auditor_agent=self.auditor_agent,
+            meta_agent=self.meta_agent,
         )
         logger.info("Grafo de dependencias resolvido e instanciado com sucesso.")
 

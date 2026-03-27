@@ -3,9 +3,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 
-DEFAULT_ASYNC_DATABASE_URL = (
-    "postgresql+asyncpg://grimoire_admin:grimoire_secure_password@localhost:5432/grimoire_core"
-)
+DEFAULT_ASYNC_DATABASE_URL = "postgresql+asyncpg://grimoire_admin:grimoire_secure_password@localhost:5432/grimoire_core"
 
 
 def _to_bool(value: str | None) -> bool:

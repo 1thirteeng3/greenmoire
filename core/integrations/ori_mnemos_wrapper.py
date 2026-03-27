@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,9 @@ class OriMnemosWrapper:
         self.is_ready = True
         logger.info("Ori_mnemos Wrapper inicializado.")
 
-    async def store_async(self, text: str, trace_id: str, metadata: Dict[str, Any] = None) -> bool:
+    async def store_async(
+        self, text: str, trace_id: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """
         Padroniza a assinatura de gravação para ser idêntica ao Mem0Wrapper.
         Converte o texto genérico num episódio de grafo estruturado.

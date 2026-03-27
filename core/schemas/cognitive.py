@@ -33,8 +33,12 @@ class ExecutionPlan(BaseModel):
     """Plano gerado pelo Planner Agent para intenções T3."""
 
     plan_id: str = Field(..., description="Identificador único deste plano.")
-    intent_reference: str = Field(..., description="A query/intenção que originou este plano.")
-    steps: List[str] = Field(..., description="Lista sequencial de ações atômicas a serem tomadas.")
+    intent_reference: str = Field(
+        ..., description="A query/intenção que originou este plano."
+    )
+    steps: List[str] = Field(
+        ..., description="Lista sequencial de ações atômicas a serem tomadas."
+    )
     estimated_complexity: str = Field(description="Ex: 'High', 'Medium', 'Low'")
     requires_auditor: bool = Field(
         default=True,

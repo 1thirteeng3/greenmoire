@@ -39,7 +39,9 @@ def load_embedding_config() -> EmbeddingConfig:
     try:
         dimension = int(dimension_raw)
     except ValueError as exc:
-        raise EmbeddingConfigError("EMBEDDING_DIMENSION deve ser um inteiro válido.") from exc
+        raise EmbeddingConfigError(
+            "EMBEDDING_DIMENSION deve ser um inteiro válido."
+        ) from exc
 
     if "/" not in model:
         raise EmbeddingConfigError(

@@ -73,7 +73,9 @@ class MockModelRouter:
 
 class MockToolRegistry:
     def get_all_schemas(self):
-        return [{"type": "function", "function": {"name": "dummy_tool", "parameters": {}}}]
+        return [
+            {"type": "function", "function": {"name": "dummy_tool", "parameters": {}}}
+        ]
 
     async def execute_tool(self, name, args):
         return json.dumps({"status": "success", "data": "dummy data"})
@@ -185,7 +187,9 @@ async def test_orchestrator_recovery_protocol_and_dual_output():
     )
     executor.execute_plan = AsyncMock(return_value="Output ruim com alucinacao.")
     auditor.audit_execution = AsyncMock(
-        return_value=AuditReport(approved=False, critique="Fato inventado sobre o projeto X.")
+        return_value=AuditReport(
+            approved=False, critique="Fato inventado sobre o projeto X."
+        )
     )
 
     bus = AsyncMock()
@@ -201,6 +205,7 @@ async def test_orchestrator_recovery_protocol_and_dual_output():
         planner_agent=planner,
         executor_agent=executor,
         auditor_agent=auditor,
+        meta_agent=AsyncMock(),
     )
 
     mock_event = MagicMock()

@@ -12,7 +12,13 @@ from core.schemas.ingestion import (
     IngestionSourceType,
     VectorizedContent,
 )
-from core.schemas.memory import BaseMemoryEntity, EpisodicMemory, ErrorMemory, MemoryMetadata, SemanticMemory
+from core.schemas.memory import (
+    BaseMemoryEntity,
+    EpisodicMemory,
+    ErrorMemory,
+    MemoryMetadata,
+    SemanticMemory,
+)
 from core.schemas.sync import ObsidianSyncState, SyncJobStatus, SyncLockStatus
 from core.schemas.tools import (
     BaseToolInput,

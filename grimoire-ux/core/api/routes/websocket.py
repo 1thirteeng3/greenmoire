@@ -2,6 +2,7 @@
 WebSocket Gateway – Canal Bidirecional de Telemetria Cognitiva
 Permite ao frontend receber frames de trace, plano e resposta em tempo real.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,7 @@ import uuid
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from core.api.schemas import (
     ChatRequest,
@@ -46,6 +47,7 @@ def _get_bus() -> AsyncRedisEventBus:
 # HELPERS DE SERIALIZAÇÃO
 # ==========================================
 
+
 def _ts() -> int:
     return int(time.time() * 1000)
 
@@ -63,6 +65,7 @@ async def _send_safe(ws: WebSocket, frame: dict) -> bool:
 # ENDPOINT PRINCIPAL
 # ==========================================
 
+
 @router.websocket("/ws/cognitive-stream")
 async def cognitive_stream_ws(
     websocket: WebSocket,
@@ -78,7 +81,9 @@ async def cognitive_stream_ws(
     """
     # --- Autenticação precoce (antes de accept) ---
     if not token or token != API_SECRET_TOKEN:
-        await websocket.close(code=4001, reason="Credenciais inválidas. Token ausente ou incorreto.")
+        await websocket.close(
+            code=4001, reason="Credenciais inválidas. Token ausente ou incorreto."
+        )
         logger.warning("WS: Tentativa de conexão não autorizada rejeitada.")
         return
 
@@ -98,18 +103,23 @@ async def cognitive_stream_ws(
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
             except asyncio.TimeoutError:
                 # Heartbeat para manter a conexão viva
-                await _send_safe(websocket, {"type": WsFrameType.HEARTBEAT, "ts": _ts()})
+                await _send_safe(
+                    websocket, {"type": WsFrameType.HEARTBEAT, "ts": _ts()}
+                )
                 continue
 
             # --- Validação do payload ---
             try:
                 request = ChatRequest.model_validate_json(raw)
             except Exception as parse_err:
-                await _send_safe(websocket, ErrorFrame(
-                    trace_id="parse_error",
-                    code="INVALID_PAYLOAD",
-                    message=f"Payload inválido: {parse_err}",
-                ).model_dump())
+                await _send_safe(
+                    websocket,
+                    ErrorFrame(
+                        trace_id="parse_error",
+                        code="INVALID_PAYLOAD",
+                        message=f"Payload inválido: {parse_err}",
+                    ).model_dump(),
+                )
                 continue
 
             trace_id = f"ws-{uuid.uuid4().hex[:10]}"
@@ -132,7 +142,9 @@ async def cognitive_stream_ws(
             )
             await bus.publish("stream:user_input", event)
 
-            logger.info("WS [%s] → Prompt injetado no bus. trace_id=%s", session_id, trace_id)
+            logger.info(
+                "WS [%s] → Prompt injetado no bus. trace_id=%s", session_id, trace_id
+            )
 
             # --- Consumir trace + resposta em paralelo ---
             await _stream_cognitive_cycle(
@@ -147,16 +159,20 @@ async def cognitive_stream_ws(
         logger.info("WS Session [%s] desconectada pelo cliente.", session_id)
     except Exception as exc:
         logger.error("WS Session [%s] erro fatal: %s", session_id, exc)
-        await _send_safe(websocket, ErrorFrame(
-            trace_id=session_id,
-            code="INTERNAL_ERROR",
-            message="Falha interna no gateway. Tente reconectar.",
-        ).model_dump())
+        await _send_safe(
+            websocket,
+            ErrorFrame(
+                trace_id=session_id,
+                code="INTERNAL_ERROR",
+                message="Falha interna no gateway. Tente reconectar.",
+            ).model_dump(),
+        )
 
 
 # ==========================================
 # STREAMING DO CICLO COGNITIVO
 # ==========================================
+
 
 async def _stream_cognitive_cycle(
     websocket: WebSocket,
@@ -175,7 +191,9 @@ async def _stream_cognitive_cycle(
     last_reply_id = "$"
     response_delivered = False
 
-    while (asyncio.get_running_loop().time() - start) < timeout_seconds and not response_delivered:
+    while (
+        asyncio.get_running_loop().time() - start
+    ) < timeout_seconds and not response_delivered:
         elapsed = asyncio.get_running_loop().time() - start
 
         # --- Ler do stream de trace (sem bloqueio longo) ---
@@ -224,7 +242,8 @@ async def _stream_cognitive_cycle(
 
                     if (
                         reply_event.header.trace_id == trace_id
-                        and reply_event.header.event_type == "cognitive_response_delivered"
+                        and reply_event.header.event_type
+                        == "cognitive_response_delivered"
                     ):
                         p = reply_event.payload
                         frame = ResponseFrame(
@@ -236,24 +255,35 @@ async def _stream_cognitive_cycle(
                             audit_critique=p.get("audit_critique"),
                             metadata={
                                 "tokens_used": p.get("tokens_used"),
-                                "elapsed_ms": int((asyncio.get_running_loop().time() - start) * 1000),
+                                "elapsed_ms": int(
+                                    (asyncio.get_running_loop().time() - start) * 1000
+                                ),
                             },
                         )
                         await _send_safe(websocket, frame.model_dump())
                         response_delivered = True
-                        logger.info("WS trace_id=%s → Resposta entregue em %.1fs.", trace_id, elapsed)
+                        logger.info(
+                            "WS trace_id=%s → Resposta entregue em %.1fs.",
+                            trace_id,
+                            elapsed,
+                        )
                         return
 
         await asyncio.sleep(0.05)
 
     # Timeout sem resposta
     if not response_delivered:
-        logger.error("WS trace_id=%s → Timeout aguardando resposta do orquestrador.", trace_id)
-        await _send_safe(websocket, ErrorFrame(
-            trace_id=trace_id,
-            code="ORCHESTRATOR_TIMEOUT",
-            message="O orquestrador demorou demasiado. A tarefa pode ainda estar a correr.",
-        ).model_dump())
+        logger.error(
+            "WS trace_id=%s → Timeout aguardando resposta do orquestrador.", trace_id
+        )
+        await _send_safe(
+            websocket,
+            ErrorFrame(
+                trace_id=trace_id,
+                code="ORCHESTRATOR_TIMEOUT",
+                message="O orquestrador demorou demasiado. A tarefa pode ainda estar a correr.",
+            ).model_dump(),
+        )
 
 
 async def _parse_trace_frame(msg_data: dict, trace_id: str) -> Optional[dict]:

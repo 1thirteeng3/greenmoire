@@ -20,7 +20,13 @@ class IngestionWorker(BaseEventWorker):
         bus: AsyncRedisEventBus,
         session_factory: async_sessionmaker[AsyncSession],
     ):
-        super().__init__(bus, session_factory, "stream:ingestion", "ingestion_group", "ingestion_worker_1")
+        super().__init__(
+            bus,
+            session_factory,
+            "stream:ingestion",
+            "ingestion_group",
+            "ingestion_worker_1",
+        )
         self.vlm_provider = VLMProvider()
         self.pdf_provider = OpenDataLoaderProvider()
         self.firecrawl_provider = FirecrawlProvider()
@@ -35,10 +41,14 @@ class IngestionWorker(BaseEventWorker):
 
     async def _process_ingestion(self, event: BaseEvent, session: AsyncSession):
         task_id_str = event.payload.get("task_id")
-        target_uri = event.payload.get("file_path") or event.payload.get("url")  # Aceita path ou URL
+        target_uri = event.payload.get("file_path") or event.payload.get(
+            "url"
+        )  # Aceita path ou URL
         domain = event.payload.get("domain", "general_knowledge")
         source_type = event.payload.get("source_type")  # 'pdf' ou 'web'
         mode = event.payload.get("mode", "scrape")  # 'scrape' ou 'crawl'
+        if not target_uri or not isinstance(target_uri, str):
+            raise ValueError(f"target_uri inválido: {target_uri}")
 
         stmt = select(IngestionTask).where(IngestionTask.id == task_id_str)
         task = (await session.execute(stmt)).scalar_one_or_none()
@@ -54,7 +64,9 @@ class IngestionWorker(BaseEventWorker):
             # --- ROTEAMENTO DE EXTRAÇÃO ---
             if source_type == "pdf":
                 logger.info(f"Iniciando extração PDF: {target_uri}")
-                raw_text = await extract_and_enrich_pdf(target_uri, self.vlm_provider, self.pdf_provider)
+                raw_text = await extract_and_enrich_pdf(
+                    target_uri, self.vlm_provider, self.pdf_provider
+                )
                 documents_to_chunk.append((raw_text, target_uri))
 
             elif source_type == "web":
@@ -62,7 +74,9 @@ class IngestionWorker(BaseEventWorker):
                     logger.info(f"Iniciando Web Crawl em lote: {target_uri}")
                     pages = await self.firecrawl_provider.crawl_website(target_uri)
                     for page in pages:
-                        documents_to_chunk.append((page["markdown"], page["source_url"]))
+                        documents_to_chunk.append(
+                            (page["markdown"], page["source_url"])
+                        )
                 else:
                     logger.info(f"Iniciando Web Scrape singular: {target_uri}")
                     page = await self.firecrawl_provider.scrape_url(target_uri)
@@ -88,7 +102,11 @@ class IngestionWorker(BaseEventWorker):
                         payload={
                             "content": chunk_text,
                             "domain": domain,
-                            "metadata": {"source_uri": source_url, "chunk_index": idx, "total_chunks": len(chunks)},
+                            "metadata": {
+                                "source_uri": source_url,
+                                "chunk_index": idx,
+                                "total_chunks": len(chunks),
+                            },
                             "human_verified": False,
                         },
                     )

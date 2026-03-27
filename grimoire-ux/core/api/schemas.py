@@ -2,6 +2,7 @@
 Grimoire API – Contratos de Normalização (Pydantic v2)
 Todos os dados que entram ou saem do Gateway são validados aqui.
 """
+
 from __future__ import annotations
 
 from enum import Enum
@@ -14,11 +15,15 @@ from pydantic import BaseModel, Field, field_validator
 # CONTRATOS DE ENTRADA
 # ==========================================
 
+
 class ChatRequest(BaseModel):
     """Payload normalizado para requisições de chat (REST e WS)."""
+
     prompt: str = Field(..., min_length=1, max_length=8000)
     context_hints: List[str] = Field(default_factory=list)
-    session_id: Optional[str] = Field(default=None, description="ID de sessão para correlação WS.")
+    session_id: Optional[str] = Field(
+        default=None, description="ID de sessão para correlação WS."
+    )
 
     @field_validator("prompt")
     @classmethod
@@ -30,8 +35,10 @@ class ChatRequest(BaseModel):
 # CONTRATOS DE SAÍDA – REST
 # ==========================================
 
+
 class ChatResponse(BaseModel):
     """Resposta normalizada do endpoint síncrono."""
+
     trace_id: str
     response: str
     tier_used: str
@@ -45,6 +52,7 @@ class ChatResponse(BaseModel):
 # CONTRATOS DE SAÍDA – WEBSOCKET (Frames)
 # ==========================================
 
+
 class WsFrameType(str, Enum):
     TRACE = "trace"
     PLAN = "plan"
@@ -57,9 +65,12 @@ class WsFrameType(str, Enum):
 
 class TraceFrame(BaseModel):
     """Frame de telemetria emitido em tempo real pelo Orchestrator."""
+
     type: Literal[WsFrameType.TRACE] = WsFrameType.TRACE
     trace_id: str
-    agent: str = Field(description="Agente que gerou este log (ex: 'IntentClassifier').")
+    agent: str = Field(
+        description="Agente que gerou este log (ex: 'IntentClassifier')."
+    )
     action: str = Field(description="Descrição legível da ação em curso.")
     tier: Optional[str] = None
     timestamp_ms: int
@@ -67,6 +78,7 @@ class TraceFrame(BaseModel):
 
 class PlanStep(BaseModel):
     """Um passo individual do plano de execução T3."""
+
     id: int
     description: str
     tools: List[str] = Field(default_factory=list)
@@ -75,6 +87,7 @@ class PlanStep(BaseModel):
 
 class PlanFrame(BaseModel):
     """Frame enviado quando o PlannerAgent gera o DAG de execução."""
+
     type: Literal[WsFrameType.PLAN] = WsFrameType.PLAN
     trace_id: str
     plan_rationale: str
@@ -83,6 +96,7 @@ class PlanFrame(BaseModel):
 
 class PlanStepUpdateFrame(BaseModel):
     """Frame de atualização de status de um passo do plano."""
+
     type: Literal[WsFrameType.PLAN_STEP_UPDATE] = WsFrameType.PLAN_STEP_UPDATE
     trace_id: str
     step_id: int
@@ -91,6 +105,7 @@ class PlanStepUpdateFrame(BaseModel):
 
 class ResponseFrame(BaseModel):
     """Frame final contendo a resposta completa da sessão cognitiva."""
+
     type: Literal[WsFrameType.RESPONSE] = WsFrameType.RESPONSE
     trace_id: str
     content: str
@@ -103,6 +118,7 @@ class ResponseFrame(BaseModel):
 
 class ErrorFrame(BaseModel):
     """Frame de erro estruturado para o frontend."""
+
     type: Literal[WsFrameType.ERROR] = WsFrameType.ERROR
     trace_id: str
     code: str
@@ -111,6 +127,7 @@ class ErrorFrame(BaseModel):
 
 class ConnectedFrame(BaseModel):
     """Handshake inicial após conexão WS bem-sucedida."""
+
     type: Literal[WsFrameType.CONNECTED] = WsFrameType.CONNECTED
     session_id: str
     message: str = "Grimoire Cognitive OS — Canal bidirecional estabelecido."
