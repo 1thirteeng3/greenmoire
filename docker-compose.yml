@@ -1,5 +1,9 @@
 version: '3.8'
 
+networks:
+  grimoire_net:
+    driver: bridge
+
 services:
   postgres:
     # Fixação estrita no Postgres 16 com pgvector oficial
@@ -13,6 +17,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - grimoire_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U grimoire_admin -d grimoire_core"]
       interval: 5s
@@ -27,6 +33,8 @@ services:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    networks:
+      - grimoire_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -45,24 +53,67 @@ services:
       - PRELOAD_MODELS=[{"url": "github:go-skynet/model-gallery/base.yaml", "name": "bge-large"}]
     volumes:
       - localai_models:/models
+    networks:
+      - grimoire_net
 
   opendataloader:
     image: adithyask/marker-api:latest
     container_name: grimoire_pdf_extractor
     ports:
-      - "8000:8000"
+      - "8002:8000" # Mudança para 8002 para não conflitar com o backend na porta 8000
     environment:
       - WORKERS=2
       - MIN_LENGTH=10
     volumes:
       - marker_models:/root/.cache/huggingface
+    networks:
+      - grimoire_net
     deploy:
       resources:
         limits:
           memory: 4G
+
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: grimoire_core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localai:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://grimoire_admin:grimoire_secure_password@postgres:5432/grimoire_core
+      - GRIMOIRE_API_KEY=${GRIMOIRE_API_KEY:-grimoire_super_secret_token_2026}
+    volumes:
+      - grimoire_vault:/app/vault
+      - ./sandbox:/app/sandbox       # Permite inspecionar a quarentena pelo seu PC host
+    networks:
+      - grimoire_net
+
+  frontend:
+    build:
+      context: ./grimoire-ux
+      dockerfile: Dockerfile
+    container_name: grimoire_ux
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80" # A interface web ficará acessível em http://localhost:3000
+    networks:
+      - grimoire_net
 
 volumes:
   pgdata:
   redisdata:
   localai_models:
   marker_models:
+  grimoire_vault:
