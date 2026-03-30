@@ -12,48 +12,21 @@ O sistema é dividido em camadas modulares para garantir escalabilidade e segura
 - **Agents (core/agents):** Tríade de agentes com ToolRegistry nativo e Sandbox para execução segura de código.
 - **Infrastructure:** Camada de persistência (PostgreSQL + pgvector) e barramento de eventos (Redis Streams).
 
-## 🛠️ Instalação e Configuração
+## 🛠️ Instalação e Utilização
 
-### Pré-requisitos
-- Python 3.10 ou superior
-- Node.js 18+ e npm
-- Docker e Docker Compose (para infraestrutura local)
+A forma recomendada de executar o Grimoire OS de forma estável e segura é através do **Docker Compose**.
 
-### Backend (Python)
-1. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Configure o ambiente:
-   ```bash
-   cp .env.example .env
-   # Edite as chaves de API (OpenAI, Anthropic, DeepSeek)
-   ```
-3. Execute as migrações:
-   ```bash
-   alembic upgrade head
-   ```
-4. Inicie o gateway:
-   ```bash
-   python -m core.api.main
-   ```
+Para o guia detalhado incluindo pré-requisitos, configuração de variáveis de ambiente (`.env`) e funcionamento da interface, consulte o nosso guia oficial:
 
-### Frontend (React)
-1. Entre no diretório:
-   ```bash
-   cd grimoire-ux
-   ```
-2. Instale e inicie:
-   ```bash
-   npm install
-   npm run dev
-   ```
+👉 **[GUIA_INSTALACAO_USO.md](./GUIA_INSTALACAO_USO.md)**
 
-## 🔒 Segurança e Qualidade
-O repositório segue padrões rigorosos de auditoria:
-- **Linting:** Ruff (Backend) e ESLint (Frontend).
-- **Tipagem:** Mypy (Estrito).
-- **Segurança:** Bandit e Safety scans integrados.
+### Comandos Rápidos
+```bash
+cp .env.example .env
+# Configure suas chaves no .env
+docker-compose up -d --build
+```
 
 ---
-**Status:** `v1.0.0-rc.1` - Pronto para operação em ambiente de demonstração controlada.
+**Status:** `v1.0.0` - Productization Concluída.
+
