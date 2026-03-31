@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from logging.config import fileConfig
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from alembic import context
 from sqlalchemy import pool

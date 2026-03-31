@@ -98,6 +98,30 @@ services:
     networks:
       - grimoire_net
 
+  maestro_worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: grimoire_maestro_worker
+    restart: unless-stopped
+    command: ["python", "run_worker.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localai:
+        condition: service_started
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://grimoire_admin:grimoire_secure_password@postgres:5432/grimoire_core
+      - GRIMOIRE_API_KEY=${GRIMOIRE_API_KEY:-grimoire_super_secret_token_2026}
+    volumes:
+      - grimoire_vault:/app/vault
+      - ./sandbox:/app/sandbox
+    networks:
+      - grimoire_net
+
   frontend:
     build:
       context: ./grimoire-ux

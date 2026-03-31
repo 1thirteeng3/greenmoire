@@ -114,12 +114,13 @@ class AuditorAgent:
             return report
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.error(
-                "AuditorAgent: Falha na validacao do relatorio (%s). "
-                "Forcando aprovacao por fail-open. Detalhes: %s",
+                "AuditorAgent: Falha técnica na validação do relatório (%s). Bloqueando por segurança (Fail-Closed).",
                 type(exc).__name__,
-                exc,
             )
             return AuditReport(
-                approved=True,
-                critique="Falha no parser/schema do Auditor. Resposta liberada.",
+                approved=False,
+                critique=(
+                    f"Falha de sistema: O Auditor não conseguiu processar os dados ({type(exc).__name__}). "
+                    "Acesso negado por precaução de segurança (Fail-Closed)."
+                ),
             )

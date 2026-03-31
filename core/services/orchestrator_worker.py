@@ -114,16 +114,27 @@ class OrchestratorWorker(BaseEventWorker):
             agent_profile = await self.selector.select_agent(intent.primary_intent)
 
             # ── ROTA ESPECIAL: MetaAgent (auto-melhoria) ─────────────────
+            # ── ROTA ESPECIAL: MetaAgent (auto-melhoria) ─────────────────
             # Bypassa a Triade normal. O SandboxManager é o próprio guardião.
             if agent_profile.name == "MetaAgent":
                 logger.warning(
                     "[%s] MetaAgent detectado. Activando pipeline de auto-melhoria.",
                     trace_id,
                 )
-                response_text = await self.meta_agent.self_improve(
-                    target_file=self._extract_target_file(user_prompt),
-                    objective=user_prompt,
-                )
+                target_file = self._extract_target_file(user_prompt)
+
+                if not target_file:
+                    logger.error("[%s] MetaAgent: Falha ao identificar o alvo.", trace_id)
+                    response_text = (
+                        "❌ **OPERACAO ABORTADA POR SEGURANCA**\n"
+                        "Nao foi possivel identificar o ficheiro alvo para a auto-melhoria no seu prompt.\n"
+                        "Por favor, especifique o caminho completo (ex: 'core/api/main.py')."
+                    )
+                else:
+                    response_text = await self.meta_agent.self_improve(
+                        target_file=target_file,
+                        objective=user_prompt,
+                    )
 
             # ── ROTA NORMAL: Triade Completa ──────────────────────────────
             else:
@@ -225,11 +236,11 @@ class OrchestratorWorker(BaseEventWorker):
         match = re.search(r"(core[\\/][\w/\\.-]+\.py)", prompt, re.IGNORECASE)
         if match:
             return match.group(1).replace("\\", "/")
-        # Fallback conservador: ficheiro de segurança (pequeno, seguro para demonstração)
-        logger.info(
-            "_extract_target_file: nenhum caminho explícito encontrado. Usando fallback."
+        # Fallback de segurança: retorna None para forçar o abortamento operacional (Fail-Closed).
+        logger.warning(
+            "_extract_target_file: nenhum caminho explícito encontrado. Abortando operacao meta."
         )
-        return "core/api/security.py"
+        return None
 
     async def _fetch_memories(
         self,

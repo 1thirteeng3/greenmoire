@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -27,6 +28,8 @@ from core.infrastructure.sandbox.manager import SandboxManager
 
 # Workers
 from core.services.orchestrator_worker import OrchestratorWorker
+from core.services.memory_service import MemoryServiceWorker
+from core.services.ingestion_worker import IngestionWorker
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +86,24 @@ class ApplicationContainer:
             auditor_agent=self.auditor_agent,
             meta_agent=self.meta_agent,
         )
+
+        # Nivel 4: Servicos de Background (Memoria e Ingestao)
+        self.memory_worker = MemoryServiceWorker(
+            bus=bus,
+            session_factory=session_factory,
+            embedding_provider=self.embedding_provider,
+        )
+        self.ingestion_worker = IngestionWorker(
+            bus=bus,
+            session_factory=session_factory,
+        )
         logger.info("Grafo de dependencias resolvido e instanciado com sucesso.")
 
     async def start_all_workers(self):
         """Inicializa as rotinas assincronas dos workers registrados."""
         logger.info("Dando boot nos daemons do sistema...")
-        await self.orchestrator_worker.start_service()
+        await asyncio.gather(
+            self.orchestrator_worker.start_service(),
+            self.memory_worker.start_service(),
+            self.ingestion_worker.start_service(),
+        )

@@ -1,78 +1,140 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
 import uuid
+from datetime import datetime
+from enum import Enum as PyEnum
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import DateTime, String, Text, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Index, String, Text, Enum, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.config.embedding import load_embedding_config
 from core.infrastructure.persistence.base import Base
 
-try:
-    from pgvector.sqlalchemy import Vector
-except ImportError as exc:
-    raise RuntimeError(
-        "Dependência ausente: instale 'pgvector' para usar colunas vetoriais no ORM."
-    ) from exc
-
 _EMBEDDING_DIMENSION = load_embedding_config().dimension
 
-
-class SemanticMemory(Base):
-    __tablename__ = "semantic_memories"
-
+class BaseModel(Base):
+    __abstract__ = True
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    trace_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    source_service: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    # Padronização para metadata_json conforme esperado pelo MemoryRepository
+    metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+# ==========================================
+# DOMÍNIO DE MEMÓRIA
+# ==========================================
+class SemanticMemory(BaseModel):
+    __tablename__ = "semantic_memories"
+
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(
         Vector(_EMBEDDING_DIMENSION), nullable=False
     )
-    memory_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, default=dict, nullable=False
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    human_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Relacionamento 1:1 estrito
+    sync_state: Mapped["ObsidianSyncState"] = relationship(
+        "ObsidianSyncState",
+        back_populates="semantic_memory",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+
+    __table_args__ = (
+        Index(
+            "hnsw_idx_semantic",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
 
-class EpisodicMemory(Base):
+class EpisodicMemory(BaseModel):
     __tablename__ = "episodic_memories"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    trace_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    correlation_id: Mapped[str | None] = mapped_column(
-        String(255), index=True, nullable=True
-    )
-    event_type: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
-    event_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(_EMBEDDING_DIMENSION), nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    trace_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    participants: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
 
 
-class ErrorMemory(Base):
+class ErrorMemory(BaseModel):
+    """
+    Memória de erro vetorizada para recuperação semântica de correções.
+    """
     __tablename__ = "error_memories"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    original_output: Mapped[str] = mapped_column(Text, nullable=False)
+    human_correction: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(_EMBEDDING_DIMENSION), nullable=True
     )
-    trace_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    error_code: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
-    message: Mapped[str] = mapped_column(Text, nullable=False)
-    memory_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, default=dict, nullable=False
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    __table_args__ = (
+        Index(
+            "hnsw_idx_error",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+
+
+# ==========================================
+# DOMÍNIO DE INFRAESTRUTURA
+# ==========================================
+class ObsidianSyncState(BaseModel):
+    __tablename__ = "obsidian_sync_states"
+
+    semantic_memory_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("semantic_memories.id", ondelete="CASCADE"),
+        unique=True,
     )
+    file_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    last_sync_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    semantic_memory: Mapped["SemanticMemory"] = relationship(
+        "SemanticMemory", back_populates="sync_state"
+    )
+
+
+# ==========================================
+# DOMÍNIO DE INGESTÃO
+# ==========================================
+class IngestionStatus(PyEnum):
+    PENDING = "PENDING"
+    DOWNLOADED = "DOWNLOADED"
+    CHUNKED = "CHUNKED"
+    VECTORIZED = "VECTORIZED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class IngestionTask(BaseModel):
+    """Máquina de estados para rastrear pipelines assíncronos de ingestão."""
+
+    __tablename__ = "ingestion_tasks"
+
+    source_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[IngestionStatus] = mapped_column(
+        Enum(IngestionStatus, name="ingestion_status_enum", create_type=False),
+        default=IngestionStatus.PENDING,
+        index=True,
+    )
+    error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0)

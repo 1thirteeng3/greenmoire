@@ -8,7 +8,7 @@ from core.infrastructure.worker_base import BaseEventWorker
 from core.integrations.firecrawl_provider import FirecrawlProvider
 from core.integrations.opendataloader_provider import OpenDataLoaderProvider
 from core.integrations.vlm_provider import VLMProvider
-from core.models.memory_models import IngestionStatus, IngestionTask
+from core.infrastructure.persistence.models import IngestionStatus, IngestionTask
 from core.schemas.events import BaseEvent, EventHeader
 
 logger = logging.getLogger(__name__)

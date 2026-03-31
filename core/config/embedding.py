@@ -44,10 +44,8 @@ def load_embedding_config() -> EmbeddingConfig:
         ) from exc
 
     if "/" not in model:
-        raise EmbeddingConfigError(
-            "EMBEDDING_MODEL deve seguir o padrão '<provider>/<model-id>' "
-            "(ex: 'openai/text-embedding-3-small')."
-        )
+        # Fallback dinâmico para garantir compatibilidade retroativa com nomes isolados
+        model = f"local/{model}"
 
     provider = model.split("/", 1)[0].lower()
     if provider not in _SUPPORTED_PROVIDERS:

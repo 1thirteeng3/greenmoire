@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from pgvector.sqlalchemy import Vector  # type: ignore
 from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.models.memory_models import SemanticMemory, EpisodicMemory, ErrorMemory
+from core.infrastructure.persistence.models import SemanticMemory, EpisodicMemory, ErrorMemory
 
 
 class MemoryRepository:

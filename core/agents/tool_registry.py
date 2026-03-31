@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from duckduckgo_search import DDGS  # Real Search Integration
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List
 
@@ -151,13 +152,33 @@ class ToolRegistry:
 
     async def tool_web_search(self, query: str) -> str:
         """
-        Executa um web scraping direcionado utilizando o provedor integrado.
+        Executa uma pesquisa real no DuckDuckGo e extrai os melhores resultados.
         """
-        logger.debug(f"Buscando na web por: {query}")
-        return (
-            f"Resultados da web para '{query}': A funcionalidade de pesquisa profunda "
-            "esta operante. Conecte o endpoint de search na integracao."
-        )
+        logger.info(f"Iniciando pesquisa real por: {query}")
+        try:
+            results = []
+            # Executa em thread para não travar o loop assíncrono (DDGS é síncrono internamente na v6)
+            import asyncio
+            
+            def _search():
+                with DDGS() as ddgs:
+                    return [r for r in ddgs.text(query, max_results=5)]
+
+            search_hits = await asyncio.to_thread(_search)
+            
+            if not search_hits:
+                return f"Nenhum resultado encontrado para a pesquisa: '{query}'."
+
+            output = [f"Resultados reais da web para: '{query}':\n"]
+            for i, hit in enumerate(search_hits, 1):
+                output.append(f"{i}. [{hit['title']}]({hit['href']})")
+                output.append(f"   Snippet: {hit['body']}\n")
+            
+            return "\n".join(output)
+            
+        except Exception as e:
+            logger.error(f"Falha na integracao de pesquisa: {e}")
+            return f"Erro técnico ao aceder ao motor de busca: {e}"
 
     def _sanitize_path(self, filename: str) -> Path:
         """

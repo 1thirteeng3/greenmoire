@@ -39,7 +39,12 @@ class RedisRateLimiter:
         self.redis = Redis.from_url(redis_url, decode_responses=True)
 
     async def check_rate_limit(self, request: Request) -> None:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = request.headers.get("x-forwarded-for")
+        if not client_ip:
+            client_ip = request.client.host if request.client else "unknown"
+        else:
+            client_ip = client_ip.split(",")[0].strip()
+
         current_minute = int(time.time() // 60)
         redis_key = f"rate_limit:{client_ip}:{current_minute}"
 
